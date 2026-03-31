@@ -564,6 +564,16 @@ When 'alternate and PRECISION = 0, a terminal decimal point appears.
 	      "inf")
 	     ((nan? val)
 	      "nan")
+         ((zero? val)
+          (string-append
+           "0"
+           (if (or (> precision 0) (member 'alternate flags))
+			   "."
+			   "")
+           (if (> precision 0)
+			   (make-string precision #\0)
+			   "")
+           "e+00"))		 
 	     (else
 	      ;; It should be X.YYYYYeZZ
 	      ;; X is 1 to 9
@@ -686,6 +696,16 @@ When 'alternate and PRECISION = 0, a terminal decimal point appears.
 	      "inf")
 	     ((nan? val)
 	      "nan")
+         ((zero? val)
+          (string-append
+           "0x0"
+           (if (or (> precision 0) (member 'alternate flags))
+               "."
+               "")
+           (if (> precision 0)
+               (make-string precision #\0)
+               "")
+           "p+0"))		 
 	     (else
 	      ;; It should be X.YYYYYpZZ
 	      ;; X is 1 to 9
@@ -773,21 +793,29 @@ When 'alternate and PRECISION = 0, a terminal decimal point appears.
   "Chooses one of decimal float or scientific float, depending
 on the precision."
   (let ((val (coerce-float _val length-modifier)))
-    (let ((_magnitude (inexact->exact (1+ (floor (log10 (abs val)))))))
-      (cond
-       ((and (> precision (1- _magnitude))
-	     (>= (1- _magnitude) -4))
-	(format-decimal-float flags field-width (- precision _magnitude) length-modifier
-			      (if (eqv? specifier 'uppercase-float)
-				  'uppercase-decimal-float
-				  'lowercase-decimal-float)
-			      val))
-       (else
-	(format-scientific-float flags field-width (1- precision) length-modifier
-				 (if (eqv? specifier 'uppercase-float)
-				     'uppercase-scientific-float
-				     'lowercase-scientific-float)
-				 val))))))
+    (if (or (not (finite? val)) (nan? val) (zero? val))
+        ;; Delegate special values — sub-formatters already handle these
+        (format-decimal-float flags field-width precision length-modifier
+                              (if (eqv? specifier 'uppercase-float)
+                                  'uppercase-decimal-float
+                                  'lowercase-decimal-float)
+                              val)
+        ;; Normal path — safe to call log10 now
+        (let ((_magnitude (inexact->exact (1+ (floor (log10 (abs val)))))))
+          (cond
+           ((and (> precision (1- _magnitude))
+                 (>= (1- _magnitude) -4))
+            (format-decimal-float flags field-width (- precision _magnitude) length-modifier
+                                  (if (eqv? specifier 'uppercase-float)
+                                      'uppercase-decimal-float
+                                      'lowercase-decimal-float)
+                                  val))
+           (else
+            (format-scientific-float flags field-width (1- precision) length-modifier
+                                     (if (eqv? specifier 'uppercase-float)
+                                         'uppercase-scientific-float
+                                         'lowercase-scientific-float)
+                                     val)))))))))
 
 (define (format-string flags field-width precision length-modifier specifier val)
   "Prints the string VAL
@@ -920,11 +948,16 @@ a formatted string."
 	;;	 output format-str args)
 	 ;;(format #t "str ~S flags ~S field-width ~S precision ~S length-modifier ~S specifier ~S argcount ~S~%"
 	;;	 str flags field-width precision length-modifier specifier argcount)
-	 (let ((substr
-		(apply format-string-dispatch
-		       (append
-			(list str flags field-width precision length-modifier specifier)
-			(take args argcount)))))
+    (when (< (length args) argcount)
+      (scm-error 'wrong-number-of-args "asprintf"
+                 "not enough arguments for format string: need ~a more, have ~a, format ~S"
+                 (list argcount (length args) _format-str)
+                 #f))         
+	  (let ((substr
+		 (apply format-string-dispatch
+		        (append
+			 (list str flags field-width precision length-modifier specifier)
+			 (take args argcount)))))
 	   (if (not (string-null? format-str))
 	       (loop (string-append output substr)
 		     (string-drop format-str (string-length str))
