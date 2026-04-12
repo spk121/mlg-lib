@@ -50,7 +50,7 @@
             ;; 8.3.2 Numerical Differentiation
             deriv2
             deriv2F
-            deriv3
+            deriv3F
 
             math-load-extension
             ))
@@ -117,7 +117,7 @@ INDEX."
   (array-index-map! arr
                     (lambda indices
                       (if (= idx (list-ref indices dimension))
-                          (* (apply array-ref (pk (append (list arr) indices))) scale)
+                          (* (apply array-ref (append (list arr) indices)) scale)
                           ;; else
                           (apply array-ref (append (list arr) indices))))))
 
@@ -133,7 +133,7 @@ IDX1."
                           (let ((indices2 (list-copy indices)))
                             (list-set! indices2 n idx2)
                             (+
-                             (* (apply array-ref (pk (append (list arr) indices2)))
+                             (* (apply array-ref (append (list arr) indices2))
                                 scale)
                              (apply array-ref (append (list arr) indices))))
 
@@ -166,8 +166,8 @@ of the the products of the elements of two array slices."
 
 (define (cast-int32-to-uint32 x)
   (if (< x 0)
-      (- #x100000000 (logand #x7fffffff (abs x)))
-      (logand #x7FFFFFFF x)))
+      (- #x100000000 (logand #xffffffff (abs x)))
+      (logand #xffffffff x)))
 
 (define (cast-uint32-to-int32 x)
   (if (<= x #x7fffffff)
@@ -251,9 +251,10 @@ over the range -1 to 1, using a Nth order approximation, where
                           ( 0.0000000000 . 0.8888888889)
                           ( 0.7745966692 . 0.5555555556))
                          ;; n = 4
-                         ((-0.8611363316 . 0.3478588451)
+                         ((-0.8611363116 . 0.3478548451)
+                          (-0.3399810436 . 0.6521451549)
                           ( 0.3399810436 . 0.6521451549)
-                          ( 0.8611363316 . 0.3478588451))
+                          ( 0.8611363116 . 0.3478548451))
                          ;; n = 5
                          ((-0.9061797459 . 0.2369268851)
                           (-0.5384693101 . 0.4786286705)
@@ -272,7 +273,6 @@ over the range -1 to 1, using a Nth order approximation, where
                  (sum 0.0))
         (if (< i n)
             (let ((nw-cur (list-ref nw i)))
-              (format #t "nw-cur ~s nw ~s i ~s ~%" nw-cur nw i)
               (loop (1+ i)
                     (+ sum (* (cdr nw-cur)
                               (proc (car nw-cur))))))
@@ -306,7 +306,7 @@ x, where x is [-1, 1]."
                (let ((sgn (expt -1 m))
                      (B (binomial-coefficient n m))
                      (C (binomial-coefficient (- (* 2 n) (* 2 m)) n))
-                     (D (expt 1 (- n (* 2 m)))))
+                     (D (expt x (- n (* 2 m)))))
                  (loop (1+ m)
                        (+ sum (* sgn B C D))))
                ;; else
@@ -328,7 +328,7 @@ x, where x is [-1, 1]."
   "Find the bitwise complement of a 64-bit unsigned integer."
   (lognot-uint x 8))
 
-(define (f32-2d-make-array m n)
+(define (f32d2-make-array m n)
   "Make a standard 2D array m (rows) by n (columns) matrix for floating
 point math. It is initialized to zero."
   (make-typed-array 'f32 0.0 `(1 ,m) `(1 ,n)))
@@ -530,7 +530,7 @@ direction sine and cosine."
   "Finds an estimate of the derivative of func at x0, using
 h as a step size."
   (* (/ 1 h)
-     (- (func (- x0 h))
+     (- (func (+ x0 h))
         (func x0))))
 
 (define deriv2F derivative-estimate-forward-two-point-formula)
@@ -539,7 +539,7 @@ h as a step size."
   (* (/ 1 (* 2 h))
      (+ (* -3 (func x0))
         (* 4 (func (+ x0 h)))
-        (func (+ x0 h h)))))
+        (- (func (+ x0 h h))))))
 
 (define deriv3F derivative-estimate-forward-three-point-formula)
 
@@ -548,6 +548,14 @@ h as a step size."
      (- (func (+ x0 h)) (func (- x0 h)))))
 
 (define deriv2 derivative-estimate-two-point-formula)
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; Exported aliases for the f32d2 array constructors
+
+(define make-2d-f32-array        f32d2-make-array)
+(define make-2d-f32-column-vector f32d2-make-column-vector)
+(define make-2d-f32-row-vector    f32d2-make-row-vector)
+(define transpose-2d-f32-array    f32d2-transpose-array)
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; For C-defined functions
