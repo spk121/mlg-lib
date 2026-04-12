@@ -93,14 +93,59 @@ is not a number."
   "Given an array ARR, consider the array slice where the index of the
 Nth dimension is equal to IDX.  Compute the sum of the absolute values
 of the entries of the slice."
-  (error 'not-implemented))
+  (let ((sum 0))
+    (array-index-map! (apply make-array #f (array-shape arr))
+                      (lambda indices
+                        (when (= idx (list-ref indices n))
+                          (set! sum
+                                (+ sum (abs (apply array-ref
+                                                   (cons arr indices))))))
+                        #f))
+    sum))
 
 (define (array-rotate-slice-pairs! arr n idx1 idx2 theta)
   "Given an array ARR, consider two array slices A and B where the Nth
 dimension is equal to IDX1 or IDX2 respectively.
 Replace each element of A with cos(theta)*A+sin(theta)*B.
 Replace each element of B with -sin(theta)*A+cos(theta)*B."
-  (error 'not-implemented))
+  (let ((c (cos theta))
+        (s (sin theta)))
+    ;; Both slices are saved before any element is modified.  This is
+    ;; necessary because array-index-map! writes in iteration order: if
+    ;; idx2 < idx1 the B slice would be overwritten before the A pass
+    ;; reads it, corrupting the result.
+    (let ((a-save (apply make-array 0 (array-shape arr)))
+          (b-save (apply make-array 0 (array-shape arr))))
+      (array-index-map! a-save
+                        (lambda indices
+                          (if (= idx1 (list-ref indices n))
+                              (apply array-ref (cons arr indices))
+                              0)))
+      (array-index-map! b-save
+                        (lambda indices
+                          (if (= idx2 (list-ref indices n))
+                              (apply array-ref (cons arr indices))
+                              0)))
+      (array-index-map! arr
+                        (lambda indices
+                          (let ((i-n (list-ref indices n)))
+                            (cond
+                             ((= i-n idx1)
+                              ;; new A = c*A + s*B
+                              (let* ((a   (apply array-ref (cons a-save indices)))
+                                     (bi  (list-copy indices)))
+                                (list-set! bi n idx2)
+                                (let ((b (apply array-ref (cons b-save bi))))
+                                  (+ (* c a) (* s b)))))
+                             ((= i-n idx2)
+                              ;; new B = -s*A + c*B
+                              (let* ((ai  (list-copy indices)))
+                                (list-set! ai n idx1)
+                                (let ((a (apply array-ref (cons a-save ai)))
+                                      (b (apply array-ref (cons b-save indices))))
+                                  (+ (* (- s) a) (* c b)))))
+                             (else
+                              (apply array-ref (cons arr indices))))))))))
 
 (define (array-scale-entry! arr scale . indices)
   "Modify array ARR such that the entry at the location given

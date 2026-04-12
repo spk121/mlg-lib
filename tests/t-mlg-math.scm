@@ -84,6 +84,59 @@
 (test-assert "deriv3F forward three-point approximates x^2 derivative"
   (< (abs (- (deriv3F (lambda (x) (* x x)) 3.0 1e-4) 6.0)) 1e-6))
 
+;; array-absolute-sum-of-slice
+;; 3x2 array:  row 0: [1, -2]   row 1: [3, -4]   row 2: [5, -6]
+(let ((arr (make-array 0 3 2)))
+  (array-set! arr  1 0 0) (array-set! arr -2 0 1)
+  (array-set! arr  3 1 0) (array-set! arr -4 1 1)
+  (array-set! arr  5 2 0) (array-set! arr -6 2 1)
+  (test-equal "array-absolute-sum-of-slice row 0"  3  (array-absolute-sum-of-slice arr 0 0))
+  (test-equal "array-absolute-sum-of-slice row 1"  7  (array-absolute-sum-of-slice arr 0 1))
+  (test-equal "array-absolute-sum-of-slice row 2" 11  (array-absolute-sum-of-slice arr 0 2))
+  (test-equal "array-absolute-sum-of-slice col 0"  9  (array-absolute-sum-of-slice arr 1 0))
+  (test-equal "array-absolute-sum-of-slice col 1" 12  (array-absolute-sum-of-slice arr 1 1)))
+
+;; array-rotate-slice-pairs!
+;;
+;; Identity rotation (theta=0): both slices must be unchanged.
+(let ((arr (make-array 0.0 2 3)))
+  (array-set! arr 1.0 0 0) (array-set! arr 2.0 0 1) (array-set! arr 3.0 0 2)
+  (array-set! arr 4.0 1 0) (array-set! arr 5.0 1 1) (array-set! arr 6.0 1 2)
+  (array-rotate-slice-pairs! arr 0 0 1 0.0)
+  (test-assert "array-rotate-slice-pairs! identity preserves A[0]" (< (abs (- (array-ref arr 0 0) 1.0)) 1e-14))
+  (test-assert "array-rotate-slice-pairs! identity preserves A[2]" (< (abs (- (array-ref arr 0 2) 3.0)) 1e-14))
+  (test-assert "array-rotate-slice-pairs! identity preserves B[0]" (< (abs (- (array-ref arr 1 0) 4.0)) 1e-14))
+  (test-assert "array-rotate-slice-pairs! identity preserves B[2]" (< (abs (- (array-ref arr 1 2) 6.0)) 1e-14)))
+
+;; Quarter-turn (theta=pi/2): new A = B, new B = -A.
+;; A = row 0 = [1, 2], B = row 1 = [3, 4]
+;; Expected: row 0 -> [3, 4], row 1 -> [-1, -2]
+(let ((arr  (make-array 0.0 2 2))
+      (pi/2 (* 2.0 (atan 1.0))))
+  (array-set! arr 1.0 0 0) (array-set! arr 2.0 0 1)
+  (array-set! arr 3.0 1 0) (array-set! arr 4.0 1 1)
+  (array-rotate-slice-pairs! arr 0 0 1 pi/2)
+  (test-assert "array-rotate-slice-pairs! quarter-turn new-A[0]"  (< (abs (- (array-ref arr 0 0)  3.0)) 1e-10))
+  (test-assert "array-rotate-slice-pairs! quarter-turn new-A[1]"  (< (abs (- (array-ref arr 0 1)  4.0)) 1e-10))
+  (test-assert "array-rotate-slice-pairs! quarter-turn new-B[0]"  (< (abs (- (array-ref arr 1 0) -1.0)) 1e-10))
+  (test-assert "array-rotate-slice-pairs! quarter-turn new-B[1]"  (< (abs (- (array-ref arr 1 1) -2.0)) 1e-10)))
+
+;; Quarter-turn with idx2 < idx1 (idx1=1, idx2=0).
+;; A = row 1 = [1, 2], B = row 0 = [3, 4], theta=pi/2
+;; Expected: row 1 -> [3, 4], row 0 -> [-1, -2]
+;; This exercises the "save both slices" logic: without saving B before the
+;; rotation pass, B (row 0) would be overwritten before the A (row 1) elements
+;; are processed, because row 0 < row 1 in iteration order.
+(let ((arr  (make-array 0.0 2 2))
+      (pi/2 (* 2.0 (atan 1.0))))
+  (array-set! arr 3.0 0 0) (array-set! arr 4.0 0 1)   ; row 0 = B
+  (array-set! arr 1.0 1 0) (array-set! arr 2.0 1 1)   ; row 1 = A
+  (array-rotate-slice-pairs! arr 0 1 0 pi/2)
+  (test-assert "array-rotate-slice-pairs! idx2<idx1 new-A[0]"  (< (abs (- (array-ref arr 1 0)  3.0)) 1e-10))
+  (test-assert "array-rotate-slice-pairs! idx2<idx1 new-A[1]"  (< (abs (- (array-ref arr 1 1)  4.0)) 1e-10))
+  (test-assert "array-rotate-slice-pairs! idx2<idx1 new-B[0]"  (< (abs (- (array-ref arr 0 0) -1.0)) 1e-10))
+  (test-assert "array-rotate-slice-pairs! idx2<idx1 new-B[1]"  (< (abs (- (array-ref arr 0 1) -2.0)) 1e-10)))
+
 ;; make-2d-f32-array and friends
 ;; Bug fix: the exported names had no matching definitions because the
 ;; internal function was named f32-2d-make-array instead of f32d2-make-array,
