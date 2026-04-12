@@ -66,6 +66,7 @@
            log-debug-pk
            log-debug-time
            %dump-log-globals
+           call-with-log-file
            ))
 
 (cond-expand (guile-2.2
@@ -374,13 +375,15 @@ out)))))))
 (define *log-stream-enabled* #t)
 (define *log-journal-enabled* #f)
 (define *log-syslog-enabled* #f)
+(define *log-file-port* #f)
 
 (define (%dump-log-globals)
   (format #t "log-structured-depth: ~a~%" (fluid-ref *log-structured-depth*))
   (format #t "log-writer-func: ~a~%" *log-writer-func*)
   (format #t "log-stream-enabled: ~a~%" *log-stream-enabled*)
   (format #t "log-journal-enabled: ~a~%" *log-journal-enabled*)
-  (format #t "log-syslog-enabled: ~a~%" *log-syslog-enabled*))
+  (format #t "log-syslog-enabled: ~a~%" *log-syslog-enabled*)
+  (format #t "log-file-port: ~a~%" *log-file-port*))
 
 ;; 523: aka _g_log_abort
 (define (%log-abort breakpoint?)
@@ -572,6 +575,11 @@ will be merged into a single string using (format #f param1 param2 ...)"
       (fluid-set! *log-structured-depth* (1+ depth))
       (when (procedure? writer-func)
         (writer-func log-level fields-alist))
+      (let ((fport *log-file-port*))
+        (when fport
+          (display (log-writer-format-fields log-level fields-alist #f) fport)
+          (newline fport)
+          (force-output fport)))
       (fluid-set! *log-structured-depth* depth)
 
       (when (logtest log-level LOG_FATAL_MASK)
@@ -711,6 +719,28 @@ the current error or output port."
     (set! *log-syslog-enabled* #t))
   (when (eqv? flag #f)
     (set! *log-syslog-enabled* #f)))
+
+(define (call-with-log-file filename thunk)
+  "Call THUNK, appending all log messages to FILENAME in addition to any
+other enabled outputs.  The file is created if it does not exist.
+Nesting is not permitted: if a log file is already open when this
+procedure is called, an error is signaled."
+  ;; Check under the mutex so two threads cannot open a log file concurrently.
+  (lock-mutex *messages-lock*)
+  (when *log-file-port*
+    (unlock-mutex *messages-lock*)
+    (error "call-with-log-file: a log file is already open" filename))
+  (let ((port (open-file filename "a")))
+    (set! *log-file-port* port)
+    (unlock-mutex *messages-lock*)
+    (dynamic-wind
+      (lambda () #f)
+      thunk
+      (lambda ()
+        (lock-mutex *messages-lock*)
+        (set! *log-file-port* #f)
+        (unlock-mutex *messages-lock*)
+        (close-port port)))))
 
 (define (logging-reset)
   (set! *log-writer-func* log-writer-default)
