@@ -5,6 +5,9 @@
 #define SD_JOURNAL_SUPPRESS_LOCATION
 #include <systemd/sd-journal.h>
 #endif
+#include <stdlib.h>
+#include <string.h>
+#include <wchar.h>
 #include <sys/uio.h>
 #include <libguile.h>
 #include "journal.h"
@@ -61,6 +64,7 @@ mlg_send_alist_to_journal (SCM s_alist)
               if (SCM_BYTEVECTOR_LENGTH (s_val) == 0)
                 {
                   free (c_key);
+                  c_key = NULL;
                   continue;
                 }
 
@@ -73,6 +77,8 @@ mlg_send_alist_to_journal (SCM s_alist)
                       SCM_BYTEVECTOR_LENGTH (s_val));
               c_entries[count].iov_len = total_len;
               count ++;
+              free (c_key);
+              c_key = NULL;
             }
         }
     }
@@ -160,7 +166,7 @@ scm_to_variable_name_string (SCM s_str, size_t *ret_len)
   for (int i = 0; i < len; i ++)
     {
       c_str[i + underscore_start]
-        = safe_char (SCM_CHAR (scm_string_ref (s_str, scm_from_int (i))));
+        = safe_char (SCM_CHAR (scm_c_string_ref (s_str, i)));
     }
   c_str[len + underscore_start] = '\0';
   *ret_len = len + underscore_start;

@@ -33,4 +33,4 @@
     ((_)
      (set! *enable-traps* #t))
     ((_ name)
-     ((set! *disable-list* (delete! *disable-list* name))))))
+     (set! *disable-list* (delete! name *disable-list*)))))

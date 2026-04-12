@@ -1,4 +1,5 @@
 (define-module (mlg assert)
+  #:use-module (ice-9 format)
   #:export (assert
             assert-type))
 

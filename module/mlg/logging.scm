@@ -219,7 +219,7 @@ out)))))))
 
 (define-syntax log-debug-time
   (syntax-rules ()
-    ((_ ...)
+    ((_)
      (log-structured LOG_DOMAIN LOG_LEVEL_DEBUG
                      "CODE_FILE" (__FILE__)
                      "CODE_LINE" (STRLOC)
@@ -477,9 +477,9 @@ when logging to the standard streams."
    ((logtest log-level LOG_LEVEL_MESSAGE)
     "\x1b[1;32m")
    ((logtest log-level LOG_LEVEL_INFO)
-    "\x1b[1;32m")
+    "\x1b[0;32m")
    ((logtest log-level LOG_LEVEL_DEBUG)
-    "\x1b[1;32m")
+    "\x1b[0;37m")
    (else
     "")))
 
@@ -571,6 +571,10 @@ will be merged into a single string using (format #f param1 param2 ...)"
     (when (not log-domain)
       (set! gstring (string-append gstring "** ")))
 
+    ;; Print the (progname:pid) prefix only when this log level is present
+    ;; in *log-msg-prefix*.  The double (zero? ...) / eqv? idiom is
+    ;; equivalent to testing membership: both sides are zero iff the level
+    ;; is NOT in the mask, both are non-zero iff it IS.
     (when (eqv? (zero? (logand *log-msg-prefix*
                                (logand log-level LOG_LEVEL_MASK)))
                 (zero? (logand log-level LOG_LEVEL_MASK)))
@@ -603,6 +607,10 @@ will be merged into a single string using (format #f param1 param2 ...)"
         (set! gstring (string-append gstring message)))
     gstring))
 
+;; journal writer: sends the structured fields directly to systemd journal
+(define (log-writer-journal log-level fields-alist)
+  (send-alist-to-journal fields-alist))
+
 ;; 2473: g_log_writer_standard_streams
 (define (log-writer-standard-streams log-level fields-alist)
   (let ((port (log-level->port log-level)))
@@ -630,7 +638,7 @@ will be merged into a single string using (format #f param1 param2 ...)"
         (when *log-stream-enabled*
           (log-writer-standard-streams log-level fields-alist))
         (when *log-journal-enabled*
-          (send-alist-to-journal fields-alist))
+          (false-if-exception (send-alist-to-journal fields-alist)))
         (when (or (logtest log-level LOG_FATAL_MASK)
                   (logtest log-level *log-always-fatal*))
           (%log-abort (not (logand (logior log-level LOG_FLAG_FATAL) LOG_FLAG_RECURSION))))

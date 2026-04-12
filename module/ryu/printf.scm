@@ -815,7 +815,7 @@ on the precision."
                                      (if (eqv? specifier 'uppercase-float)
                                          'uppercase-scientific-float
                                          'lowercase-scientific-float)
-                                     val)))))))))
+                                     val)))))))
 
 (define (format-string flags field-width precision length-modifier specifier val)
   "Prints the string VAL
