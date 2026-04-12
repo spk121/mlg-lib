@@ -86,20 +86,22 @@ bytevector containing that region of the source.
 Every programmer in the world has written their own logging class.
 This is mine.  It is largely stolen from GLib.
 
-I had three goals when I put this together.
+I had four goals when I put this together.
 
 @enumerate
 @item
-The user can choose to log to @code{systemd}'s @code{journald}
-and/or to the stdout/stderr.
+The user can choose to log to @code{systemd}'s @code{journald},
+to the system syslog daemon, and/or to stdout/stderr.
 @item
 When logging to stdout/stderr, it should look and feel like
 GLib's logging.
 @item
 It should have colors.
+@item
+Log output can be captured to a file for any dynamic extent.
 @end enumerate
 
-The logger has six levels of output
+The logger has six levels of output.
 @table @code
 @item LOG_LEVEL_ERROR
 errors and assertion failures
@@ -120,18 +122,20 @@ exit.
 
 By default @code{LOG_LEVEL_ERROR}, @code{LOG_LEVEL_CRITICAL},
 @code{LOG_LEVEL_WARNING}, and @code{LOG_LEVEL_MESSAGE} messages are
-printed, while @code{LOG_LEVEL_INFO} and @code{LOG_LEVEL_DEBUG} messages
-are silently dropped.  The next section describes how to modify this
-behavior.
+printed to stdout/stderr, while @code{LOG_LEVEL_INFO} and
+@code{LOG_LEVEL_DEBUG} messages are silently dropped.  The next section
+describes how to modify this behavior.
 
 @section Setting up the logger
+
 There are a few ways to customize the output.
 
 @subsection MESSAGES_DEBUG and the log domain
+
 If you set a log domain using the @code{set-log-domain} procedure,
 logging messages will print out the log domain string as part of each
 message.  Setting a short log domain string can be useful if you are
-sending logging messages from multiple modules or subsystem.
+sending logging messages from multiple modules or subsystems.
 
 @code{LOG_LEVEL_INFO} and @code{LOG_LEVEL_DEBUG} messages are silently
 dropped by default.  To have them output, you can do one of two things.
@@ -141,103 +145,162 @@ Set the @env{MESSAGES_DEBUG} environment variable to the string
 @code{all}.
 @item
 Use the procedure @code{set-log-domain} to set the log domain to a
-string, and then set the @env{MESSAGES_DEBUG} environment variable to a
-string that contains the log domain string.
+string, and then set the @env{MESSAGES_DEBUG} environment variable to
+a string that contains the log domain string.
 @end itemize
 
 @deffn Procedure set-log-domain str
 @deffnx Procedure get-log-domain
-Sets or gets the current log domain. @var{str} must be a string.
+Sets or gets the current log domain.  @var{str} must be a string or
+@code{#f} to clear the domain.
 @end deffn
 
-@subsection Enabling journald and console output
+@subsection Enabling and disabling output destinations
 
-By default, the logger will sent messages both to @code{journald} and to
-the console.  You can disable one or the other by using the
-@code{log-set-stream-output} and @code{log-set-journal-output}
-procedures
+By default the logger sends messages to stdout/stderr only.  Journal
+and syslog output are disabled by default.  The following procedures
+control each output destination independently.
 
-@deffn Procedure log-set-stream-output flag
-@deffnx Procedure log-set-journal-output flag
-Given a @var{flag} value, which must be @code{#t} or @code{#f}, these
-procedures enable or disable the output of logging information to
-stdout/stderr and to @code{journald} respectively.
-
-If you disable both stream and journal output, no log information will
-be generated, but, a message of @code{LOG_LEVEL_ERROR} will still end
-the program.
+@deffn Procedure log-enable-stream-output flag
+Given a @var{flag} value, which must be @code{#t} or @code{#f}, this
+procedure enables or disables logging to stdout/stderr.  Stream output
+is enabled by default.
 @end deffn
+
+@deffn Procedure log-enable-journal-output flag
+Given a @var{flag} value, which must be @code{#t} or @code{#f}, this
+procedure enables or disables logging to @code{systemd}'s
+@code{journald}.  Journal output is disabled by default.
+@end deffn
+
+@deffn Procedure log-enable-syslog-output flag
+Given a @var{flag} value, which must be @code{#t} or @code{#f}, this
+procedure enables or disables logging to the system syslog daemon.
+Syslog output is disabled by default.
+@end deffn
+
+If all three output destinations are disabled, no log text is
+generated, but a message at @code{LOG_LEVEL_ERROR} will still
+terminate the program.
 
 @subsection Enabling color
 
-By default, logging messages sent to the console will be colorized based
-on the severity of the message.  This behavior can be modified by using
-the @code{log-enable-color} procedure.
+By default, logging messages sent to the console will be colorized
+based on the severity of the message.  This behavior can be modified
+by using the @code{log-enable-color} procedure.
 
 @deffn Procedure log-enable-color flag
 Given a @var{flag} value, which must be @code{#t} or @code{#f}, this
-procedure enables or disables color on console output.
+procedure enables or disables ANSI color codes on stdout/stderr output.
+@end deffn
+
+@subsection Setting a custom log writer
+
+@deffn Procedure log-set-default-writer writer-func
+Sets the procedure used to write each log entry.  @var{writer-func}
+must be a procedure that accepts two arguments: an integer log-level
+and an association list of field key/value string pairs.
+
+As a special case, the symbols @code{'standard}, @code{'journal}, and
+@code{'syslog} may be passed instead of a procedure to select the
+corresponding built-in writer.  Any other non-procedure value resets
+the writer to the default standard-streams writer.
+@end deffn
+
+@subsection Logging to a file
+
+@deffn Procedure call-with-log-file filename thunk
+Calls @var{thunk} with all log messages appended to the file named
+@var{filename}, in addition to any other enabled output destinations.
+The file is created if it does not exist; if it already exists, new
+messages are appended to the end.
+
+Nesting is not permitted: if a log file is already open when
+@code{call-with-log-file} is called, an error is signaled.
+
+The file is always closed when @var{thunk} returns or raises an
+unhandled exception.  File output uses no color codes regardless of
+the @code{log-enable-color} setting.
 @end deffn
 
 @section Logging messages
 
-These procedures can be used to generate logging output
+The following syntax forms generate log output.  Each form
+automatically records the source file name, line number, and enclosing
+procedure name.
 
-@deffn Procedure log-error msg ...
-@deffnx Procedure log-critical msg ...
-@deffnx Procedure log-warning msg ...
-@deffnx Procedure log-message msg ...
-@deffnx Procedure log-info msg ...
-@deffnx Procedure log-debug msg ...
+@deffn Syntax log-error msg @dots{}
+@deffnx Syntax log-critical msg @dots{}
+@deffnx Syntax log-warning msg @dots{}
+@deffnx Syntax log-message msg @dots{}
+@deffnx Syntax log-info msg @dots{}
+@deffnx Syntax log-debug msg @dots{}
 
-These procedures generate a logging message of a given priority.
-@var{msg} can either be a plain string, or it can be a @code{format}
-string followed by additional arguments.
+These forms generate a log message at the corresponding priority
+level.  @var{msg} can be a plain string, or a @code{format} string
+followed by additional arguments; the arguments are combined with
+@code{(format #f msg @dots{})}.
 
 @code{log-info} and @code{log-debug} messages are dropped silently by
-default unless the @env{MESSAGES_DEBUG} envirnoment variable and the log
-domain have been set appropriately.
+default unless the @env{MESSAGES_DEBUG} environment variable and the
+log domain have been set appropriately.
+
+Calling @code{log-error} will terminate the program after logging.
 @end deffn
 
-There are also specialized forms of the @code{log-domain} message that
-may be useful.
+For lower-level use, the following procedures accept an explicit
+log-level integer and a structured field list.
+
+@deffn Procedure log-structured log-domain log-level key val @dots{} @code{"MESSAGE"} msg @dots{}
+Logs a structured message.  Fields are given as alternating @var{key}
+and @var{val} string pairs.  The @code{"MESSAGE"} key must appear last;
+all arguments after it are passed to @code{format} to produce the
+message string.
+@end deffn
+
+@deffn Procedure log-structured-alist log-level fields-alist
+Logs a structured message given an already-constructed association
+list of string key/value pairs.  This is the lowest-level entry point
+into the logging pipeline.
+@end deffn
+
+@section Diagnostic and warning helpers
 
 @deffn Syntax warn-if-reached
-If this syntax is called, it logs a critical warning message that this
-code should not have been reached.
+Logs a @code{LOG_LEVEL_CRITICAL} message stating that this point in
+the code should not have been reached.
 @end deffn
 
 @deffn Syntax warn-if-used val
-The syntax returns the @var{val} that was passed into it without
-modification, and it generates a critical warning message that this
-value should not have been used.
+Returns @var{val} unchanged and logs a @code{LOG_LEVEL_CRITICAL}
+message stating that this value should not have been used.
 @end deffn
 
 @deffn Syntax warn-if-false expr
-If @var{expr} is false, this will log a critical warning message that
-this value is false.
+Evaluates @var{expr}.  If the result is false, logs a
+@code{LOG_LEVEL_CRITICAL} message naming @var{expr}.  Returns the
+result.
 @end deffn
 
-@deffn Syntax warn-val-if-used val
-The syntax returns the @var{val} that was passed into it without
-modification, and it generates a critical warning message if the value
-is false.
+@deffn Syntax warn-val-if-false expr val
+Evaluates @var{expr}.  If the result is false, logs a
+@code{LOG_LEVEL_CRITICAL} message naming both @var{expr} and the
+current value of @var{val}.  Returns the result of @var{expr}.
 @end deffn
 
 @deffn Syntax log-debug-pk expr
-The syntax returns the @var{expr} that was passed into it without
-modification, and it generates a debug message giving the value of
-@var{expr}.
+Returns @var{expr} unchanged and logs a @code{LOG_LEVEL_DEBUG} message
+showing both the source form and the value of @var{expr}.
 @end deffn
 
 @deffn Syntax log-debug-locals
-This syntax generates a debug message giving the values of all the local
-variables at this position in the code.
+Logs a @code{LOG_LEVEL_DEBUG} message listing the names and values of
+all local variables visible at this point in the code.
 @end deffn
 
 @deffn Syntax log-debug-time
-This syntax generates a debug message giving the number of seconds that
-have passed since logging began
+Logs a @code{LOG_LEVEL_DEBUG} message giving the number of seconds
+elapsed since logging was initialized.
 @end deffn
 
 @node mlg lists
