@@ -78,12 +78,12 @@ G1-TRANSFOMER takes 160 to 255."
         (c0-transformer x))
        ((<= 32 x 126)
         (g0-transformer x))
-       ((= 127)
+       ((= x 127)
         (del-transformer x))
        ((<= 128 x 159)
         (c1-transformer x))
        ((<= 160 x 255)
-        (g1-transformer))))
+        (g1-transformer x))))
     bv
     start
     end)))
@@ -136,7 +136,7 @@ If the bytevector is of length zero, just INIT is returned."
   (let ((result init))
     (do ((i start (1+ i)))
         ((>= i end))
-      (set! result (proc (bytevector-u8-ref i result))))
+      (set! result (proc (bytevector-u8-ref bv i) result)))
     result))
 
 (define* (bytevector-u8-for-each proc bv #:optional (start 0) (end #f))
@@ -198,7 +198,7 @@ If the bytevector is of length zero, an empty list is returned."
     (do ((i start (1+ i)))
         ((>= i end))
       (set! result (append! result
-                            (list (proc (bytevector-u8-ref i result))))))
+                            (list (proc (bytevector-u8-ref bv i))))))
     result))
 
 (define* (read-bytevector #:optional (port (current-input-port))
@@ -220,7 +220,7 @@ COUNT is provided, treat it as the maximum number of bytes to read."
               (bytevector-copy! output 0
                                 new-output 0 output-len)
               (bytevector-copy! buf 0
-                                new-output output-len (+ output-len bytes-read))
+                                new-output output-len bytes-read)
               (set! n (+ n bytes-read))
               (if (> (- count n) 0)
                   ;; Still more to read; loop again.
