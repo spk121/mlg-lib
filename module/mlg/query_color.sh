@@ -10,9 +10,9 @@ TERMS=$(ls -1 /usr/share/terminfo/*/* | xargs basename -a)
 echo "("
 for t in $TERMS
 do
-    C=$(tput -T"$t" colors)
-    if [ "$C" -gt 7 ] ; then
-        F=$(tput -T"$t" setaf)
+    C=$(tput -T"$t" colors 2>/dev/null)
+    if [ -n "$C" ] && [ "$C" -eq "$C" ] 2>/dev/null && [ "$C" -gt 63 ] ; then
+        F=$(tput -T"$t" setaf 2>/dev/null)
         if echo "$F" | sed -n '/%p1%d[;m]/q0' ; then
             echo "\"$t\""
         fi
