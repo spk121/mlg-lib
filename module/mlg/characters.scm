@@ -50,6 +50,7 @@
             U+
             char-count-cells
             char-combining-mark?
+            characters-load-extension
             ))
 
 (define (ascii-isalnum? c)
@@ -209,7 +210,7 @@ make macro name, e.g., that it is ASCII alphanumeric, period or underscore."
 
 (define (char-get-display-representation-of-control-char c)
   "The character to use when displaying controls in \"^X\" form"
-  (integer->char (+ (char->integer c) 64)))
+  (integer->char (logxor (char->integer c) 64)))
 
 (define (char-count-cells chr x tabSize)
   "Number of cells a character CHR at column X would take up"
@@ -230,3 +231,5 @@ make macro name, e.g., that it is ASCII alphanumeric, period or underscore."
 
 (define (characters-load-extension)
   (load-extension "libmlg" "init_chars_lib"))
+
+(characters-load-extension)
