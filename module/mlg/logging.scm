@@ -45,6 +45,7 @@
            log-enable-color
            log-enable-stream-output
            log-enable-journal-output
+           log-enable-syslog-output
 
            log-structured
            log-structured-alist
@@ -371,13 +372,15 @@ out)))))))
 (define *log-enable-color* #t)
 (define *log-start-time* #f)
 (define *log-stream-enabled* #t)
-(define *log-journal-enabled* #t)
+(define *log-journal-enabled* #f)
+(define *log-syslog-enabled* #f)
 
 (define (%dump-log-globals)
   (format #t "log-structured-depth: ~a~%" (fluid-ref *log-structured-depth*))
   (format #t "log-writer-func: ~a~%" *log-writer-func*)
   (format #t "log-stream-enabled: ~a~%" *log-stream-enabled*)
-  (format #t "log-journal-enabled: ~a~%" *log-journal-enabled*))
+  (format #t "log-journal-enabled: ~a~%" *log-journal-enabled*)
+  (format #t "log-syslog-enabled: ~a~%" *log-syslog-enabled*))
 
 ;; 523: aka _g_log_abort
 (define (%log-abort breakpoint?)
@@ -393,13 +396,16 @@ pairs.
 
 As a special case, if WRITER_FUNC is the symbol 'standard, the default
 standard streams writer will be used.  If WRITER_FUNC is 'journal,
-the systemd journal writer will be used."
+the systemd journal writer will be used.  If WRITER_FUNC is 'syslog,
+the syslog writer will be used."
   (lock-mutex *messages-lock*)
   (cond
    ((eqv? writer_func 'standard)
     (set! *log-writer-func* log-writer-standard-streams))
    ((eqv? writer_func 'journal)
     (set! *log-writer-func* log-writer-journal))
+   ((eqv? writer_func 'syslog)
+    (set! *log-writer-func* log-writer-syslog))
    ((procedure? writer_func)
     (set! *log-writer-func* writer_func))
    (else
@@ -413,10 +419,22 @@ when logging to the standard streams."
   (set! *log-enable-color* flag)
   (unlock-mutex *messages-lock*))
 
+(define (log-enable-journal-output flag)
+  "Given FLAG, which is #t or #f, this enables or disables logging to the systemd journal."
+  (lock-mutex *messages-lock*)
+  (set! *log-journal-enabled* flag)
+  (unlock-mutex *messages-lock*))
+
+(define (log-enable-syslog-output flag)
+  "Given FLAG, which is #t or #f, this enables or disables logging to syslog."
+  (lock-mutex *messages-lock*)
+  (set! *log-syslog-enabled* flag)
+  (unlock-mutex *messages-lock*))
+
 ;; 1151: mklevel_prefix
 (define (mklevel-prefix log-level use-color?)
   (string-append
-   (log-level->color log-level use-color?)
+   (log-level->color log-level use-color?))
    (cond
     ((eqv? (logand log-level LOG_LEVEL_MASK) LOG_LEVEL_ERROR)
      "ERROR")
@@ -440,7 +458,7 @@ when logging to the standard streams."
        "")
    (if (logtest log-level ALERT_LEVELS)
        " **"
-       "")))
+       ""))
 
 ;; 1150: extracted fro mmklevel_prefix
 (define (log-level->port log-level)
@@ -611,6 +629,10 @@ will be merged into a single string using (format #f param1 param2 ...)"
 (define (log-writer-journal log-level fields-alist)
   (send-alist-to-journal fields-alist))
 
+;; syslog writer: sends the message to the system syslog daemon
+(define (log-writer-syslog log-level fields-alist)
+  (send-alist-to-syslog log-level fields-alist))
+
 ;; 2473: g_log_writer_standard_streams
 (define (log-writer-standard-streams log-level fields-alist)
   (let ((port (log-level->port log-level)))
@@ -637,6 +659,8 @@ will be merged into a single string using (format #f param1 param2 ...)"
         ;; Now send the alist to the journald and/or the stdout/stderr
         (when *log-stream-enabled*
           (log-writer-standard-streams log-level fields-alist))
+        (when *log-syslog-enabled*
+          (false-if-exception (send-alist-to-syslog log-level fields-alist)))
         (when *log-journal-enabled*
           (false-if-exception (send-alist-to-journal fields-alist)))
         (when (or (logtest log-level LOG_FATAL_MASK)
@@ -682,6 +706,12 @@ the current error or output port."
   (when (eqv? flag #f)
     (set! *log-journal-enabled* #f)))
 
+(define (log-enable-syslog-output flag)
+  (when (eqv? flag #t)
+    (set! *log-syslog-enabled* #t))
+  (when (eqv? flag #f)
+    (set! *log-syslog-enabled* #f)))
+
 (define (logging-reset)
   (set! *log-writer-func* log-writer-default)
   (set! *log-msg-prefix* (logior
@@ -689,8 +719,9 @@ the current error or output port."
                           LOG_LEVEL_WARNING
                           LOG_LEVEL_CRITICAL
                           LOG_LEVEL_DEBUG))
-  (set! *log-journal-enabled* #t)
   (set! *log-stream-enabled* #t)
+  (set! *log-journal-enabled* #f)
+  (set! *log-syslog-enabled* #f)
   (set! *log-always-fatal* LOG_FATAL_MASK)
   (set! *log-start-time* (monotonic-time)))
 

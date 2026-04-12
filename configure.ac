@@ -7,9 +7,9 @@ AC_CONFIG_MACRO_DIRS([m4])
 AM_PROG_AR
 AC_PROG_CC
 
-AC_CHECK_HEADERS([systemd/sd-journal.h unistd.h])
+AC_CHECK_HEADERS([systemd/sd-journal.h unistd.h syslog.h])
 AC_SEARCH_LIBS([sd_journal_sendv],[systemd])
-AC_CHECK_FUNCS([sysconf])
+AC_CHECK_FUNCS([sysconf openlog syslog closelog])
 
 GUILE_PKG([3.0 2.2])
 GUILE_PROGS
