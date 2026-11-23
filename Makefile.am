@@ -89,7 +89,8 @@ TESTS = \
   tests/t-mlg-characters.scm \
   tests/t-mlg-lists.scm \
   tests/t-mlg-math.scm \
-  tests/t-mlg-ports.scm
+  tests/t-mlg-ports.scm \
+  tests/t-ryu-printf.scm
 
 TEST_EXTENSIONS = .scm
 

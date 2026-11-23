@@ -37,6 +37,7 @@
 (define UINTPTR_MAX 18446744073709551615)
 (define PTRDIFF_MIN -9223372036854775808)
 (define PTRDIFF_MAX 9223372036854775807)
+(define DBL_MIN_EXP               -1022) ; exponent of the smallest normal double
 
 
 
@@ -52,29 +53,29 @@
 ;; Duplicate flags are harmless but strictly invalid.
 (define *conversion-specification-match*
   (make-regexp
-   "%([-+ #0]*)([0-9]*|\\*)(\\.\\*|\\.[0-9]+|)(hh|ll|[ljztL]|)([diouxXfFeEgGaAcspn%])"))
+   "%([-+ #0]*)([0-9]*|\\*)(\\.\\*|\\.[0-9]*|)(hh|ll|[hljztL]|)([diouxXfFeEgGaAcspn%])"))
 
 (define *flags-table*
   '((#\- . left-justified)
     (#\+ . signed)
     (#\space . space-signed)
-    (#\# . alternative)
+    (#\# . alternate)
     (#\0 . zero-padded)))
 
 (define (parse-flags str)
   (let* ((out '())
 	 (add (lambda (x)
-		(unless (member x out)
+		(unless (memq x out)
 		  (set! out (append! out (list x)))))))
     (string-for-each
      (lambda (c)
        (add (assoc-ref *flags-table* c)))
      str)
-    (when (and (member 'space-signed out)
-	       (member 'signed out))
+    (when (and (memq 'space-signed out)
+	       (memq 'signed out))
       (set! out (delete 'space-signed out)))
-    (when (and (member 'left-justified out)
-	       (member 'zero-padded out))
+    (when (and (memq 'left-justified out)
+	       (memq 'zero-padded out))
       (set! out (delete 'zero-padded out)))
     out))
 
@@ -100,7 +101,30 @@
     (#\n . output-count)))
 
 (define (parse-specifier str)
-  (assoc-ref *specifier-table* (string-ref str 0) ))
+  (assoc-ref *specifier-table* (string-ref str 0)))
+
+(define *unsigned-specifiers*
+  '(octal-unsigned
+    decimal-unsigned
+    lowercase-hexadecimal-unsigned
+    uppercase-hexadecimal-unsigned))
+
+(define *float-specifiers*
+  '(lowercase-decimal-float
+    uppercase-decimal-float
+    lowercase-scientific-float
+    uppercase-scientific-float
+    lowercase-float
+    uppercase-float
+    lowercase-hexadecimal-float
+    uppercase-hexadecimal-float))
+
+(define (uppercase-specifier? specifier)
+  (memq specifier '(uppercase-hexadecimal-unsigned
+		    uppercase-decimal-float
+		    uppercase-scientific-float
+		    uppercase-float
+		    uppercase-hexadecimal-float)))
 
 (define *default-length-modifier*
   '((decimal-signed . INT)
@@ -125,114 +149,31 @@
 (define (default-length-modifier specifier)
   (assoc-ref *default-length-modifier* specifier))
 
+;; For each length modifier string, the type used for signed and for
+;; unsigned integer conversions.
+(define *integer-length-modifiers*
+  '(("hh" INT8    . UINT8)
+    ("h"  SHRT    . USHRT)
+    ("l"  LONG    . ULONG)
+    ("ll" LLONG   . ULLONG)
+    ("j"  INTMAX  . UINTMAX)
+    ("z"  SIZE    . SIZE)
+    ("t"  PTRDIFF . PTRDIFF)))
+
 (define (parse-length-modifier str specifier)
-  (let ((default (default-length-modifier specifier)))
+  (let ((default (default-length-modifier specifier))
+	(int-entry (assoc-ref *integer-length-modifiers* str)))
     (cond
-     ((string-null? str)
-      default)
-     
-     ((string=? str "hh")
-      (cond
-       ((eqv? specifier 'decimal-signed)
-	'INT8)
-       ((member specifier (list 'octal-unsigned
-				'decimal-unsigned
-				'lowercase-hexadecimal-unsigned
-				'uppercase-hexadecimal-unsigned))
-	'UINT8)
-       (else
-	default)))
-     
-     ((string=? str "h")
-      (cond
-       ((eqv? specifier 'decimal-signed)
-	'SHRT)
-       ((member specifier (list 'octal-unsigned
-				'decimal-unsigned
-				'lowercase-hexadecimal-unsigned
-				'uppercase-hexadecimal-unsigned))
-	'USHRT)
-       (else
-	default)))
-
-     ((string=? str "l")
-      (cond
-       ((eqv? specifier 'decimal-signed)
-	'LONG)
-       ((member specifier (list 'octal-unsigned
-				'decimal-unsigned
-				'lowercase-hexadecimal-unsigned
-				'uppercase-hexadecimal-unsigned))
-	'ULONG)
-       ((eqv? specifier 'character)
-	'WCHAR)
-       ((eqv? specifier 'string)
-	'WSTRING)
-       (else
-	default)))
-     
-     ((string=? str "ll")
-      (cond
-       ((eqv? specifier 'decimal-signed)
-	'LLONG)
-       ((member specifier (list 'octal-unsigned
-				'decimal-unsigned
-				'lowercase-hexadecimal-unsigned
-				'uppercase-hexadecimal-unsigned))
-	'ULLONG)
-       (else
-	default)))
-     
-     ((string=? str "j")
-      (cond
-       ((eqv? specifier 'decimal-signed)
-	'INTMAX)
-       ((member specifier (list 'octal-unsigned
-				'decimal-unsigned
-				'lowercase-hexadecimal-unsigned
-				'uppercase-hexadecimal-unsigned))
-	'UINTMAX)
-       (else
-	default)))
-
-     ((string=? str "z")
-      (cond
-       ((eqv? specifier 'decimal-signed)
-	'SIZE)
-       ((member specifier (list 'octal-unsigned
-				'decimal-unsigned
-				'lowercase-hexadecimal-unsigned
-				'uppercase-hexadecimal-unsigned))
-	'SIZE)
-       (else
-	default)))
-
-     ((string=? str "t")
-      (cond
-       ((eqv? specifier 'decimal-signed)
-	'PTRDIFF)
-       ((member specifier (list 'octal-unsigned
-				'decimal-unsigned
-				'lowercase-hexadecimal-unsigned
-				'uppercase-hexadecimal-unsigned))
-	'PTRDIFF)
-       (else
-	default)))
-
-     ((string=? str "L")
-      (cond
-       ((member specifier (list 'lowercase-hexadecimal-float
-				'uppercase-hexadecimal-float
-				'lowercase-decimal-float
-				'uppercase-decimal-float
-				'lowercase-scientific-float
-				'uppercase-scientific-float
-				'lowercase-float
-				'uppercase-float))
-	'LDBL)
-       (else
-	default)))
-
+     ((and int-entry (eqv? specifier 'decimal-signed))
+      (car int-entry))
+     ((and int-entry (memq specifier *unsigned-specifiers*))
+      (cdr int-entry))
+     ((and (string=? str "l") (eqv? specifier 'character))
+      'WCHAR)
+     ((and (string=? str "l") (eqv? specifier 'string))
+      'WSTRING)
+     ((and (string=? str "L") (memq specifier *float-specifiers*))
+      'LDBL)
      (else
       default))))
 
@@ -245,31 +186,12 @@
    (else
     (string->number str))))
 
-(define *default-precision-table*
-  '((decimal-signed . 1)
-    (octal-unsigned . 1)
-    (decimal-unsigned . 1)
-    (lowercase-hexadecimal-unsigned . 1)
-    (uppercase-hexadecimal-unsigned . 1)
-    (lowercase-decimal-float . 6)
-    (uppercase-decimal-float . 6)
-    (lowercase-scientific-float . 6)
-    (uppercase-scientific-float . 6)
-    (lowercase-float . 6)
-    (uppercase-float . 6)
-    (lowercase-hexadecimal-float . 8)
-    (uppercase-hexadecimal-float . 8)
-    (character . 0)
-    (string . 0)
-    (pointer . 1)
-    (output-count . 0)
-    (percent . 0)))
-  
 (define (parse-precision str specifier)
-  ;; (format #t "in parse-precision ~S ~S~%" str specifier)
+  "Return #f when no precision was given, 'star for '.*', or the
+precision as an integer.  A lone '.' means a precision of zero."
   (cond
    ((string-null? str)
-    (assoc-ref *default-precision-table* specifier))
+    #f)
    ((string=? str ".")
     0)
    ((string=? str ".*")
@@ -296,15 +218,14 @@ list of conversion specification properties."
 	    flags field-width precision length-modifier specifier))
      (else
       ;; It does match and begins with the conversion specifier
-      (let ((flags (parse-flags (match:substring match1 1)))
-	    (field-width (parse-field-width (match:substring match1 2)))
-	    (specifier (parse-specifier (match:substring match1 5))))
-	(let ((length-modifier (parse-length-modifier (match:substring match1 4)
-						      specifier))
-	      (precision (parse-precision (match:substring match1 3) specifier)))
-
-	  (list (match:substring match1 0)
-		flags field-width precision length-modifier specifier)))))))
+      (let* ((flags (parse-flags (match:substring match1 1)))
+	     (field-width (parse-field-width (match:substring match1 2)))
+	     (specifier (parse-specifier (match:substring match1 5)))
+	     (length-modifier (parse-length-modifier (match:substring match1 4)
+						     specifier))
+	     (precision (parse-precision (match:substring match1 3) specifier)))
+	(list (match:substring match1 0)
+	      flags field-width precision length-modifier specifier))))))
 
 (define (format-argument-count field-width precision specifier)
   "Given the output of format-string-parser, this return the number of arguments
@@ -319,654 +240,450 @@ required."
        (if (eqv? precision 'star) 1 0)
        1))))
 
+;;; Helpers
+
+(define (pad-field flags field-width prefix body zero-pad-ok?)
+  "Pad PREFIX + BODY to FIELD-WIDTH.  PREFIX is the sign and/or radix
+prefix.  When zero-padding, the zeros go between PREFIX and BODY."
+  (let ((n (max 0 (- field-width (string-length prefix) (string-length body)))))
+    (cond
+     ((memq 'left-justified flags)
+      (string-append prefix body (make-string n #\space)))
+     ((and zero-pad-ok? (memq 'zero-padded flags))
+      (string-append prefix (make-string n #\0) body))
+     (else
+      (string-append (make-string n #\space) prefix body)))))
+
+(define (pad-left-zeros str len)
+  (if (< (string-length str) len)
+      (string-append (make-string (- len (string-length str)) #\0) str)
+      str))
+
+(define (negative-float? x)
+  (or (< x 0) (eqv? x -0.0)))
+
+(define (float-sign-string val flags)
+  (cond
+   ((negative-float? val) "-")
+   ((memq 'signed flags) "+")
+   ((memq 'space-signed flags) " ")
+   (else "")))
+
+(define (strip-trailing-zeros str)
+  "Given a string of the form DIGITS.DIGITS, remove trailing zeros in the
+fractional part, and the decimal point if nothing remains after it."
+  (if (not (string-index str #\.))
+      str
+      (let* ((s (string-trim-right str #\0)))
+	(if (string-suffix? "." s)
+	    (substring s 0 (1- (string-length s)))
+	    s))))
+
+;; All float formatting is done on the exact rational value of the
+;; float, so rounding is correct (round-half-even on the true binary
+;; value, as glibc does).
+
+(define (fixed-notation q precision alternate?)
+  "Format the non-negative exact rational Q with PRECISION fractional
+digits."
+  (let* ((n (round (* q (expt 10 precision))))
+	 (s (pad-left-zeros (number->string n) (1+ precision)))
+	 (k (- (string-length s) precision)))
+    (string-append (substring s 0 k)
+		   (if (or (> precision 0) alternate?) "." "")
+		   (substring s k))))
+
+(define (decimal-exponent q)
+  "For a positive exact rational Q, return the integer E such that
+10^E <= Q < 10^(E+1)."
+  (let loop ((e (inexact->exact (floor (log10 (exact->inexact q))))))
+    (cond
+     ((< q (expt 10 e)) (loop (1- e)))
+     ((>= q (expt 10 (1+ e))) (loop (1+ e)))
+     (else e))))
+
+(define (scientific-digits q precision)
+  "For a non-negative exact rational Q, return two values: a string of
+PRECISION + 1 significant digits, rounded, and the decimal exponent."
+  (if (zero? q)
+      (values (make-string (1+ precision) #\0) 0)
+      (let* ((e (decimal-exponent q))
+	     (n (round (* q (expt 10 (- precision e))))))
+	(if (>= n (expt 10 (1+ precision)))
+	    ;; Rounding carried into a new digit, e.g. 9.99 -> 10.0
+	    (values (number->string (round (* q (expt 10 (- precision (1+ e))))))
+		    (1+ e))
+	    (values (number->string n) e)))))
+
+(define (exponent-string e min-digits)
+  (string-append (if (< e 0) "-" "+")
+		 (pad-left-zeros (number->string (abs e)) min-digits)))
+
+(define (scientific-notation q precision alternate?)
+  (call-with-values (lambda () (scientific-digits q precision))
+    (lambda (digits e)
+      (string-append (substring digits 0 1)
+		     (if (or (> precision 0) alternate?) "." "")
+		     (substring digits 1)
+		     "e"
+		     (exponent-string e 2)))))
+
+(define (format-non-finite flags field-width specifier val)
+  (let ((str (if (nan? val) "nan" "inf")))
+    (pad-field flags field-width
+	       (float-sign-string val flags)
+	       (if (uppercase-specifier? specifier) (string-upcase str) str)
+	       #f)))
+
+(define (format-float-with proc flags field-width precision length-modifier specifier _val)
+  "Common driver for floating-point conversions.  PROC receives the
+absolute value of the number as an exact rational and returns the
+digit string."
+  (let ((val (coerce-float _val length-modifier)))
+    (if (or (nan? val) (inf? val))
+	(format-non-finite flags field-width specifier val)
+	(let ((body (proc (inexact->exact (abs val)))))
+	  (pad-field flags field-width
+		     (float-sign-string val flags)
+		     (if (uppercase-specifier? specifier) (string-upcase body) body)
+		     #t)))))
+
+;;; Formatters
 
 (define (format-literal flags field-width precision length-modifier specifier val)
-  ;; (format #f "format-literal ~S" val)
   val)
 
 (define (format-percent flags field-width precision length-modifier specifier val)
   "%")
 
-(define (format-decimal-signed flags field-width precision length-modifier specifier _val)
-  "Prints VAL as a base-10, signed integer.
+(define (format-integer flags field-width precision length-modifier specifier _val)
+  "Prints VAL as an integer.
 FLAGS is a list with zero or more of 'signed 'space-signed 'left-justified
- 'zero-padded
-FIELD_WIDTH is the minimum output string length.
-PRECISION is the minimum number of digits displayed; leading
- zeros are added if necessary.
-Cannot be both 'signed and 'space-signed. 'signed has precedence.
-Cannot have a PRECISION > 0 and be 'zero-padded. PRECISION has precedence."
-  (let ((val (coerce-int _val length-modifier)))
-    (let* ((numstr (if (and (zero? val) (zero? precision))
-		       ""
-		       ;; else
-		       (number->string (abs val))))
-	   (signstr
-	    (cond
-	     ((< val 0) "-")
-	     ((member 'signed flags) "+")
-	     ((member 'space-signed flags) " ")
-	     (else "")))
-	   (num-len (string-length numstr))
-	   (num-sign-len (+ num-len
-			    (string-length signstr)))
-	   (precision-pad-len (max 0 (- precision num-len)))
-	   (field-pad-len (max 0 (- field-width (+ num-sign-len
-						   precision-pad-len)))))
-      (if (and (zero? val) (zero? precision))
-	  ;; There is a special case when val and precision are both
-	  ;; zero where no digits are printed.
-	  (make-string field-width #\space)
-	  ;; else, at least one digit is printed.
-	  (string-append
-	   ;; left pad
-	   (if (and (member 'zero-padded flags)
-		    (not (member 'left-justified flags))
-		    (= precision 0))
-	       ;; left pad is zeros
-	       (make-string field-pad-len #\0)
-	       ;; else
-	       (if (not (member 'left-justified flags))
-		   ;; left pad is spaces
-		   (make-string field-pad-len #\space)
-		   ;; else
-		   ""))
-	   ;; sign
-	   signstr
-	   ;; precision padding
-	   (make-string precision-pad-len #\0)
-	   ;; the value
-	   numstr
-	   ;; right padding
-	   ( if (member 'left-justified flags)
-		(make-string field-pad-len #\space)
-		""))))))
+ 'alternate 'zero-padded
+FIELD-WIDTH is the minimum output string length.
+PRECISION is the minimum number of digits displayed, or #f.  When
+ a precision is given, the 'zero-padded flag is ignored.
+With 'alternate, octal output always begins with a zero, and non-zero
+ hexadecimal output gets a 0x or 0X prefix."
+  (let* ((signed? (eqv? specifier 'decimal-signed))
+	 (val (if signed?
+		  (coerce-int _val length-modifier)
+		  (coerce-unsigned _val length-modifier)))
+	 (prec (or precision 1))
+	 (radix (case specifier
+		  ((octal-unsigned) 8)
+		  ((lowercase-hexadecimal-unsigned uppercase-hexadecimal-unsigned) 16)
+		  (else 10)))
+	 (hex? (= radix 16))
+	 (digits1 (if (and (zero? val) (zero? prec))
+		      ""
+		      (pad-left-zeros (number->string (abs val) radix) prec)))
+	 (digits (if (and (= radix 8)
+			  (memq 'alternate flags)
+			  (not (string-prefix? "0" digits1)))
+		     (string-append "0" digits1)
+		     digits1))
+	 (prefix (cond
+		  ((and signed? (< val 0)) "-")
+		  ((and signed? (memq 'signed flags)) "+")
+		  ((and signed? (memq 'space-signed flags)) " ")
+		  ((and hex? (memq 'alternate flags) (not (zero? val))) "0x")
+		  (else ""))))
+    (if (eqv? specifier 'uppercase-hexadecimal-unsigned)
+	(pad-field flags field-width (string-upcase prefix) (string-upcase digits)
+		   (not precision))
+	(pad-field flags field-width prefix digits (not precision)))))
 
-(define (format-unsigned flags field-width precision length-modifier specifier _val)
-  "Prints VAL as an unsigned integer.
-FLAGS is a list with zero or more of 'left-justified 'alternate 'zero-padded
-FIELD_WIDTH is the minimum output string length.
-PRECISION is the minimum number of digits displayed; leading
- zeros are added if necessary.
-SPECIFIER is one of 'octal 'unsigned 'lowercase-hex or 'uppercase-hex
-Cannot have a PRECISION > 0 and be 'zero-padded. PRECISION has precedence.
-When 'octal, 'alternate increases the precision, if necessary, to ensure
-  a leading zero.
-When 'lowercase-hex or 'uppercase-hex and VAL != 0, a '0x' or '0X' prefix is added."
-  (let ((val (coerce-unsigned _val length-modifier)))
-    (let* (
-	   ;; First, the base number
-	   (numstr1 (if (and (zero? val) (zero? precision))
-			""
-			;; else
-			(number->string (abs val)
-					(cond
-					 ((eqv? specifier 'octal-unsigned) 8)
-					 ((or (eqv? specifier 'lowercase-hexadecimal-unsigned)
-					      (eqv? specifier 'uppercase-hexadecimal-unsigned))
-					  16)
-					 (else 10)))))
-	   ;; Then, the precision
-	   (numstr2
-	    (string-append (make-string
-			    (max 0 (- precision (string-length numstr1)))
-			    #\0)
-			   numstr1))
-	   ;; Then, any alternate text
-	   (numstr3
-	    (string-append
-	     (cond
-	      ((and (eqv? specifier 'octal-unsigned)
-		    (member 'alternate flags)
-		    (not (zero? (string-length numstr2)))
-		    (not (char=? #\0 (string-ref numstr2 0))))
-	       "0")
-	      ((and (or (eqv? specifier 'uppercase-hexadecimal-unsigned)
-			(eqv? specifier 'lowercase-hexadecimal-unsigned))
-		    (and (not (zero? val))
-			 (member 'alternate flags)))
-	       "0x")
-	      (else
-	       ""))
-	     numstr2))
-	   ;; The proper casing
-	   (numstr
-	    (if (eqv? specifier 'uppercase-hexadecimal-unsigned)
-		(string-upcase numstr3)
-		numstr3))
-	   (num-len (string-length numstr))
-	   (precision-pad-len (max 0 (- precision num-len)))
-	   (field-pad-len (max 0 (- field-width (+ num-len
-						   precision-pad-len)))))
-      (if (and (zero? val) (zero? precision))
-	  ;; There is a special case when val and precision are both
-	  ;; zero where no digits are printed.
-	  (make-string field-width #\space)
-	  ;; else, at least one digit is printed.
-	  (string-append
-	   ;; left pad
-	   (if (and (member 'zero-padded flags)
-		    (not (member 'left-justified flags))
-		    (= precision 0))
-	       ;; left pad is zeros
-	       (make-string field-pad-len #\0)
-	       ;; else
-	       (if (not (member 'left-justified flags))
-		   ;; left pad is spaces
-		   (make-string field-pad-len #\space)
-		   ;; else
-		   ""))
-	   ;; precision padding
-	   (make-string precision-pad-len #\0)
-	   ;; the value
-	   numstr
-	   ;; right padding
-	   ( if (member 'left-justified flags)
-		(make-string field-pad-len #\space)
-		""))))))
+(define (format-decimal-float flags field-width precision length-modifier specifier val)
+  "Prints VAL as a floating-point number in decimal notation, [-]ddd.ddd.
+PRECISION is the number of digits after the decimal point (default 6).
+With 'alternate, the decimal point always appears."
+  (format-float-with
+   (lambda (q) (fixed-notation q (or precision 6) (memq 'alternate flags)))
+   flags field-width precision length-modifier specifier val))
 
-(define (format-pointer flags field-width precision length-modifier specifier _val)
-  "POINTER")
+(define (format-scientific-float flags field-width precision length-modifier specifier val)
+  "Prints VAL as a floating-point number in scientific notation, [-]d.ddde±dd.
+PRECISION is the number of digits after the decimal point (default 6).
+With 'alternate, the decimal point always appears."
+  (format-float-with
+   (lambda (q) (scientific-notation q (or precision 6) (memq 'alternate flags)))
+   flags field-width precision length-modifier specifier val))
 
-(define (format-decimal-float flags field-width precision length-modifier specifier _val)
-  "Prints VAL as a floating-point number in decimal notation.
-FLAGS is a list with zero or more of 'left-justified 'alternate 'zero-padded
-FIELD_WIDTH is the minimum output string length.
-PRECISION is the number of digits after the decimal point.
-SPECIFIER is one of 'lowercase or 'uppercase, which affects the casing
-  of INF and NAN.
-When 'alternate and PRECISION = 0, a terminal decimal point appears.
-"
-  (let ((val (coerce-float _val length-modifier)))
-    (let* ((signstr
-	    ;; The sign string
-	    (cond
-	     ((< val 0) "-")
-	     ((member 'signed flags) "+")
-	     ((member 'space-signed flags) " ")
-	     (else "")))
-	   ;; First pass at the stringifying the number
-	   (numstr
-	    (cond
-	     ((not (finite? val))
-	      "inf")
-	     ((nan? val)
-	      "nan")
-	     (else
-	      (let* ((shift (* (expt 10 precision)))
-		     (x (inexact->exact (round (* shift (abs val)))))
-		     (left (quotient x shift))
-		     (right (remainder x shift)))
-		(string-append
-		 (number->string left)
-		 (if (or (> precision 0) (member 'alternate flags))
-		     "."
-		     "")
-		 (if (> precision 0)
-		     (number->string right)
-		     ""))))))
-	   ;; Fixing the case of the number
-	   (numcasestr (if (eqv? 'uppercase-decimal-float specifier)
-			   (string-upcase numstr)
-			   numstr))
-	   (num-len (string-length numcasestr))
-	   (num-sign-len (+ num-len
-			    (string-length signstr)))
-	   ;; Number of spaces left in the field
-	   (field-pad-len (max 0 (- field-width num-sign-len))))
+(define (format-float flags field-width precision length-modifier specifier val)
+  "Prints VAL in decimal or scientific notation, depending on its
+exponent.  PRECISION is the number of significant digits (default 6).
+Trailing zeros are removed unless 'alternate is set."
+  (let ((alternate? (memq 'alternate flags))
+	(p (cond ((not precision) 6)
+		 ((zero? precision) 1)
+		 (else precision))))
+    (format-float-with
+     (lambda (q)
+       (let* ((x (call-with-values (lambda () (scientific-digits q (1- p)))
+		   (lambda (digits e) e)))
+	      (str (if (and (> p x) (>= x -4))
+		       (fixed-notation q (- p 1 x) alternate?)
+		       (scientific-notation q (1- p) alternate?))))
+	 (cond
+	  (alternate? str)
+	  ((string-index str #\e)
+	   => (lambda (i)
+		(string-append (strip-trailing-zeros (substring str 0 i))
+			       (substring str i))))
+	  (else (strip-trailing-zeros str)))))
+     flags field-width precision length-modifier specifier val)))
 
-      ;; Three cases
-      ;; 1. sign, field-pad-zeros, numcasestr
-      ;; 2. field-pad-space, sign, numcasestr
-      ;; 3. sign, numcasestr, field-pad-space
-      (cond
-       ;; Case 1
-       ((and (member 'zero-padded flags)
-	     (not (member 'left-justified flags)))
-	(string-append
-	 signstr
-	 (make-string field-pad-len #\0)
-	 numcasestr))
-       ;; Case 2
-       ((not (member 'left-justified flags))
-	(string-append
-	 (make-string field-pad-len #\space)
-	 signstr
-	 numcasestr))
-       ;; Case 3
-       (else
-	(string-append
-	 signstr
-	 numcasestr
-	 (make-string field-pad-len #\space)))))))
+(define (binary-exponent q)
+  "For a positive exact rational Q, return the integer E such that
+2^E <= Q < 2^(E+1)."
+  (let loop ((e (- (integer-length (numerator q))
+		   (integer-length (denominator q)))))
+    (cond
+     ((< q (expt 2 e)) (loop (1- e)))
+     ((>= q (expt 2 (1+ e))) (loop (1+ e)))
+     (else e))))
 
-(define (format-scientific-float flags field-width precision length-modifier specifier _val)
-  "Prints VAL as a floating-point number in scientific notation.
-FLAGS is a list with zero or more of 'left-justified 'alternate 'zero-padded
-FIELD_WIDTH is the minimum output string length.
-PRECISION is the number of digits after the decimal point.
-SPECIFIER is one of 'lowercase or 'uppercase, which affects the casing
-  of INF and NAN.
-When 'alternate and PRECISION = 0, a terminal decimal point appears.
-"
-  (let ((val (coerce-float _val length-modifier)))
-    (let* ((signstr
-	    ;; The sign string
-	    (cond
-	     ((< val 0) "-")
-	     ((member 'signed flags) "+")
-	     ((member 'space-signed flags) " ")
-	     (else "")))
-	   ;; First pass at the stringifying the number
-	   (numstr
-	    (cond
-	     ((not (finite? val))
-	      "inf")
-	     ((nan? val)
-	      "nan")
-         ((zero? val)
-          (string-append
-           "0"
-           (if (or (> precision 0) (member 'alternate flags))
-			   "."
-			   "")
-           (if (> precision 0)
-			   (make-string precision #\0)
-			   "")
-           "e+00"))		 
-	     (else
-	      ;; It should be X.YYYYYeZZ
-	      ;; X is 1 to 9
-	      ;; Y has PRECISION digits
-	      ;; Z has 2 or more digits
-	      
-	      (let* (
-		     ;; The number of digits in the integer part of VAL
-		     (_magnitude (inexact->exact (1+ (floor (log10 (abs val))))))
-		     ;; We only want PRECISION fractional digits, so
-		     ;; we shift the decimal point LEFT by (magnitude - 1) digits to get
-		     ;;   down to 1 digit
-		     ;; and then shift the decimal point RIGHT by PRECISION digits
-		     (shift (* (expt 10 (+ precision (- (- _magnitude 1))))))
-		     (x (inexact->exact (round (* shift (abs val)))))
-		     ;; OK. Now X is our rounded integer digits.
-		     ;; Now we shift the decimal point LEFT by PRECISION
-		     ;; digits
-		     (left (quotient x (expt 10 precision)))
-		     (right (remainder x (expt 10 precision)))
-		     )
-		(string-append
-		 (number->string left)
-		 (if (or (> precision 0) (member 'alternate flags))
-		     "."
-		     "")
-		 (if (> precision 0)
-		     (number->string right)
-		     "")
-		 "e"
-		 ;; Our exponent is _magnitude - 1
-		 (if (< (1- _magnitude) 0)
-		     "-"
-		     "")
-		 (if (< (abs (1- _magnitude)) 10)
-		     "0"
-		     "")
-		 (number->string (abs (1- _magnitude))))))))
-	   ;; Fixing the case of the number
-	   (numcasestr (if (eqv? 'uppercase-scientific-float specifier)
-			   (string-upcase numstr)
-			   numstr))
-	   (num-len (string-length numcasestr))
-	   (num-sign-len (+ num-len
-			    (string-length signstr)))
-	   ;; Number of spaces left in the field
-	   (field-pad-len (max 0 (- field-width num-sign-len))))
-
-      ;; Three cases
-      ;; 1. sign, field-pad-zeros, numcasestr
-      ;; 2. field-pad-space, sign, numcasestr
-      ;; 3. sign, numcasestr, field-pad-space
-      (cond
-       ;; Case 1
-       ((and (member 'zero-padded flags)
-	     (not (member 'left-justified flags)))
-	(string-append
-	 signstr
-	 (make-string field-pad-len #\0)
-	 numcasestr))
-       ;; Case 2
-       ((not (member 'left-justified flags))
-	(string-append
-	 (make-string field-pad-len #\space)
-	 signstr
-	 numcasestr))
-       ;; Case 3
-       (else
-	(string-append
-	 signstr
-	 numcasestr
-	 (make-string field-pad-len #\space)))))))
-
-
-(define (two-normalize x)
-  "Given a positive value X.
-If it is zero, return 0 . 0
-Otherwise, multiply or divide it by powers 
-of two until the product begins with 1.0.
-Return (X / 2^N) and N."
-  (if (zero? x)
-      (cons 0 0)
-      ;; else
-      (let* ((n (inexact->exact (floor (/ (log x) (log 2)))))
-	     (y (/ x (expt 2 n))))
-
-	;; The following block checks for float roundoff errors.
-	(while (or (< y 1.0) (>= y 2.0))
-	  (cond
-	   ((< y 1.0)
-	    (set! n (1- n))
-	    (set! y (* x (expt 2 n))))
-	   ((>= y 2.0)
-	    (set! n (1+ n))
-	    (set! y (* x (expt 2 n))))))
-	
-	(cons y n))))
+(define (hexadecimal-notation q precision alternate?)
+  "Format the non-negative exact rational Q as 0xh.hhhp±d.  When
+PRECISION is #f, use as many hex digits as needed to be exact.
+Like glibc, subnormal doubles are printed as 0x0.hhhp-1022."
+  (let* ((e (if (zero? q) 0 (max (binary-exponent q) DBL_MIN_EXP)))
+	 (m (/ q (expt 2 e)))		; 1 <= m < 2, or 0 <= m < 1
+	 (prec (or precision
+		   (let loop ((p 0))
+		     (if (integer? (* m (expt 16 p))) p (loop (1+ p))))))
+	 (n (round (* m (expt 16 prec))))
+	 (lead (quotient n (expt 16 prec)))
+	 (frac (remainder n (expt 16 prec))))
+    (string-append "0x"
+		   (number->string lead 16)
+		   (if (or (> prec 0) alternate?) "." "")
+		   (if (> prec 0)
+		       (pad-left-zeros (number->string frac 16) prec)
+		       "")
+		   "p"
+		   (exponent-string e 1))))
 
 (define (format-hexadecimal-float flags field-width precision length-modifier specifier _val)
-  "Prints VAL as a floating-point number in hex scientific notation.
-FLAGS is a list with zero or more of 'left-justified 'alternate 'zero-padded
-FIELD_WIDTH is the minimum output string length.
-PRECISION is the number of digits after the decimal point.
-SPECIFIER is one of 'lowercase or 'uppercase, which affects the casing
-  of INF and NAN.
-When 'alternate and PRECISION = 0, a terminal decimal point appears.
-"
+  "Prints VAL as a floating-point number in hex scientific notation,
+[-]0xh.hhhp±d.  PRECISION is the number of hex digits after the point;
+by default, the value is printed exactly."
   (let ((val (coerce-float _val length-modifier)))
-    (let* ((signstr
-	    ;; The sign string
-	    (cond
-	     ((< val 0) "-")
-	     ((member 'signed flags) "+")
-	     ((member 'space-signed flags) " ")
-	     (else "")))
-	   ;; First pass at the stringifying the number
-	   (numstr
-	    (cond
-	     ((not (finite? val))
-	      "inf")
-	     ((nan? val)
-	      "nan")
-         ((zero? val)
-          (string-append
-           "0x0"
-           (if (or (> precision 0) (member 'alternate flags))
-               "."
-               "")
-           (if (> precision 0)
-               (make-string precision #\0)
-               "")
-           "p+0"))		 
-	     (else
-	      ;; It should be X.YYYYYpZZ
-	      ;; X is 1 to 9
-	      ;; Y has PRECISION digits
-	      ;; Z has 2 or more digits
-	      
-	      (let* (
-		     ;; First, we find a power of two that make the 1st digit
-		     ;; 0.0 or 1.0.
-		     (twonor (two-normalize (abs val)))
-		     (val2 (car twonor))
-		     (_magnitude2 (cdr twonor))
-		     
-		     (log16 (lambda (x) (/ (log x) (log 16))))
-		     (log2 (lambda (x) (/ (log x) (log 2))))
+    (if (or (nan? val) (inf? val))
+	(format-non-finite flags field-width specifier val)
+	(let* ((str (hexadecimal-notation (inexact->exact (abs val))
+					  precision (memq 'alternate flags)))
+	       (str (if (uppercase-specifier? specifier) (string-upcase str) str)))
+	  ;; Zero padding goes after the 0x prefix.
+	  (pad-field flags field-width
+		     (string-append (float-sign-string val flags) (substring str 0 2))
+		     (substring str 2)
+		     #t)))))
 
-		     ;; The number of digits in the integer part of VAL
-		     (_magnitude16 (inexact->exact (1+ (floor (log16 (abs val2))))))
-		     ;; We only want PRECISION fractional digits, so
-		     ;; we shift the decimal point LEFT by (magnitude - 1) digits to get
-		     ;;   down to 1 digit
-		     ;; and then shift the decimal point RIGHT by PRECISION digits
-		     (shift (* (expt 16 (+ precision (- (- _magnitude16 1))))))
-		     (x (inexact->exact (round (* shift (abs val2)))))
-
-		     ;; OK. Now X is our rounded integer digits.
-		     ;; Now we shift the decimal point LEFT by PRECISION
-		     ;; digits
-		     (left (quotient x (expt 16 precision)))
-		     (right (remainder x (expt 16 precision)))
-		     )
-		(string-append
-		 "0x"
-		 (number->string left 16)
-		 (if (or (> precision 0) (member 'alternate flags))
-		     "."
-		     "")
-		 (if (> precision 0)
-		     (number->string right 16)
-		     "")
-		 "p"
-		 ;; Our exponent is _magnitude - 1
-		 (if (< (1- _magnitude2) 0)
-		     "-"
-		     "")
-		 ;; Unlike standard scientific, hex scientific
-		 ;; can have 1-digit exponents.
-		 (number->string (abs _magnitude2)))))))
-	   ;; Fixing the case of the number
-	   (numcasestr (if (eqv? 'uppercase-hexadecimal-float specifier)
-			   (string-upcase numstr)
-			   numstr))
-	   (num-len (string-length numcasestr))
-	   (num-sign-len (+ num-len
-			    (string-length signstr)))
-	   ;; Number of spaces left in the field
-	   (field-pad-len (max 0 (- field-width num-sign-len))))
-
-      ;; Three cases
-      ;; 1. sign, field-pad-zeros, numcasestr
-      ;; 2. field-pad-space, sign, numcasestr
-      ;; 3. sign, numcasestr, field-pad-space
-      (cond
-       ;; Case 1
-       ((and (member 'zero-padded flags)
-	     (not (member 'left-justified flags)))
-	(string-append
-	 signstr
-	 (make-string field-pad-len #\0)
-	 numcasestr))
-       ;; Case 2
-       ((not (member 'left-justified flags))
-	(string-append
-	 (make-string field-pad-len #\space)
-	 signstr
-	 numcasestr))
-       ;; Case 3
-       (else
-	(string-append
-	 signstr
-	 numcasestr
-	 (make-string field-pad-len #\space)))))))
-
-(define (format-float flags field-width precision length-modifier specifier _val)
-  "Chooses one of decimal float or scientific float, depending
-on the precision."
-  (let ((val (coerce-float _val length-modifier)))
-    (if (or (not (finite? val)) (nan? val) (zero? val))
-        ;; Delegate special values — sub-formatters already handle these
-        (format-decimal-float flags field-width precision length-modifier
-                              (if (eqv? specifier 'uppercase-float)
-                                  'uppercase-decimal-float
-                                  'lowercase-decimal-float)
-                              val)
-        ;; Normal path — safe to call log10 now
-        (let ((_magnitude (inexact->exact (1+ (floor (log10 (abs val)))))))
-          (cond
-           ((and (> precision (1- _magnitude))
-                 (>= (1- _magnitude) -4))
-            (format-decimal-float flags field-width (- precision _magnitude) length-modifier
-                                  (if (eqv? specifier 'uppercase-float)
-                                      'uppercase-decimal-float
-                                      'lowercase-decimal-float)
-                                  val))
-           (else
-            (format-scientific-float flags field-width (1- precision) length-modifier
-                                     (if (eqv? specifier 'uppercase-float)
-                                         'uppercase-scientific-float
-                                         'lowercase-scientific-float)
-                                     val)))))))
-
-(define (format-string flags field-width precision length-modifier specifier val)
+(define (format-string flags field-width precision length-modifier specifier _val)
   "Prints the string VAL
 FLAGS is a list containing zero or more of 'left-justified
-FIELD_WIDTH is the padding."
-  (let* ((charstr val)
-	 (char-len (string-length charstr))
-	 (field-pad-len (max 0 (- field-width char-len))))
-    (cond
-     ((member 'left-justified flags)
-      (string-append
-       charstr
-       (make-string field-pad-len #\space)))
-     (else
-      (string-append
-       (make-string field-pad-len #\space)
-       charstr)))))
+FIELD-WIDTH is the padding.
+PRECISION, if given, is the maximum number of characters printed."
+  (let* ((val (coerce-string _val length-modifier))
+	 (str (if (and precision (< precision (string-length val)))
+		  (substring val 0 precision)
+		  val)))
+    (pad-field flags field-width "" str #f)))
 
 (define (format-character flags field-width precision length-modifier specifier _val)
   "Prints the single character VAL
 FLAGS is a list containing zero or more of 'left-justified
-FIELD_WIDTH is the padding."
+FIELD-WIDTH is the padding."
   (let ((val (coerce-char _val length-modifier)))
-    (format-string flags field-width precision length-modifier specifier (string val))))
+    (pad-field flags field-width "" (string val) #f)))
+
+(define (format-pointer flags field-width precision length-modifier specifier _val)
+  "Prints the pointer VAL as a hexadecimal address, or (nil) for a null
+pointer, as glibc does."
+  (let ((addr (coerce-pointer _val length-modifier)))
+    (pad-field flags field-width ""
+	       (if (zero? addr)
+		   "(nil)"
+		   (string-append "0x" (number->string addr 16)))
+	       #f)))
 
 (define *dispatch-table*
   `((literal . ,format-literal)
     (percent . ,format-percent)
-    (decimal-signed . ,format-decimal-signed)
-    (octal-unsigned . ,format-unsigned)
-    (decimal-unsigned . ,format-unsigned)
-    (lowercase-hexadecimal-unsigned . ,format-unsigned)
-    (uppercase-hexadecimal-unsigned . ,format-unsigned)
+    (decimal-signed . ,format-integer)
+    (octal-unsigned . ,format-integer)
+    (decimal-unsigned . ,format-integer)
+    (lowercase-hexadecimal-unsigned . ,format-integer)
+    (uppercase-hexadecimal-unsigned . ,format-integer)
     (lowercase-decimal-float . ,format-decimal-float)
     (uppercase-decimal-float . ,format-decimal-float)
     (lowercase-scientific-float . ,format-scientific-float)
     (uppercase-scientific-float . ,format-scientific-float)
+    (lowercase-float . ,format-float)
+    (uppercase-float . ,format-float)
     (lowercase-hexadecimal-float . ,format-hexadecimal-float)
     (uppercase-hexadecimal-float . ,format-hexadecimal-float)
     (character . ,format-character)
     (string . ,format-string)
     (pointer . ,format-pointer)))
 
-(define (format-string-dispatch str flags _field-width _precision length-modifier specifier . _vals)
+(define (format-string-dispatch str flags field-width precision length-modifier specifier . vals)
   "Call the appropriate dispatch function for the current specifier."
-  (let* ((val _vals)
-	 (field-width _field-width)
-	 (precision _precision))
+  (cond
+   ((eqv? specifier 'literal)
+    str)
+   ((eqv? specifier 'percent)
+    "%")
+   (else
+    ;; Other forms use one to three arguments
+    (when (eqv? 'star field-width)
+      (set! field-width (coerce-int (car vals) 'INT))
+      (set! vals (cdr vals))
+      ;; A negative field width is a '-' flag plus a positive width.
+      (when (< field-width 0)
+	(set! field-width (- field-width))
+	(set! flags (cons 'left-justified (delete 'zero-padded flags)))))
+    (when (eqv? 'star precision)
+      (set! precision (coerce-int (car vals) 'INT))
+      (set! vals (cdr vals))
+      ;; A negative precision is taken as if it were omitted.
+      (when (< precision 0)
+	(set! precision #f)))
+    ((assoc-ref *dispatch-table* specifier)
+     flags field-width precision length-modifier specifier (car vals)))))
 
-    ;; The %% form doesn't use any arguments
-    (unless (or (eqv? specifier 'literal)
-		(eqv? specifier 'percent))
-      ;; Other forms use one to three arguments
-      (when (eqv? 'star field-width)
-	(set! field-width (car val))
-	(set! val (cdr val)))
-      (when (eqv? 'star precision)
-	(set! field-width (car val))
-	(set! val (cdr val)))
-      (set! val (car val)))
-    (when (eqv? specifier 'literal)
-      (set! val str))
+;;; Argument coercion
 
-    (let ((dispatcher (assoc-ref *dispatch-table* specifier)))
-      ;; (format #t "Dispatching specifier ~s field-width ~s precision ~s val ~s to ~s~%"
-	;;      specifier field-width precision val dispatcher)
-      (when dispatcher
-	(dispatcher flags field-width precision length-modifier specifier val)))))
+;; Ranges of the C integer types for each length modifier.
+(define *signed-ranges*
+  `((INT8    ,INT8_MIN    . ,INT8_MAX)
+    (SHRT    ,SHRT_MIN    . ,SHRT_MAX)
+    (INT     ,INT_MIN     . ,INT_MAX)
+    (LONG    ,LONG_MIN    . ,LONG_MAX)
+    (LLONG   ,LLONG_MIN   . ,LLONG_MAX)
+    (INTMAX  ,LLONG_MIN   . ,LLONG_MAX)
+    (SIZE    ,LONG_MIN    . ,LONG_MAX)
+    (PTRDIFF ,PTRDIFF_MIN . ,PTRDIFF_MAX)))
+
+(define *unsigned-ranges*
+  `((UINT8   0 . ,UCHAR_MAX)
+    (USHRT   0 . ,USHRT_MAX)
+    (UINT    0 . ,UINT_MAX)
+    (ULONG   0 . ,ULONG_MAX)
+    (ULLONG  0 . ,ULLONG_MAX)
+    (UINTMAX 0 . ,ULLONG_MAX)
+    (SIZE    0 . ,ULONG_MAX)
+    (PTRDIFF 0 . ,UINTPTR_MAX)))
+
+(define (range-check val type ranges who)
+  "Check that the integer VAL fits in TYPE.  If it doesn't, either
+signal an error or wrap it as C would, depending on ERROR_ON_OVERFLOW."
+  (let* ((range (assq-ref ranges type))
+	 (lo (car range))
+	 (hi (cdr range)))
+    (cond
+     ((<= lo val hi)
+      val)
+     (ERROR_ON_OVERFLOW
+      (scm-error 'out-of-range who "value ~S is out of range for ~a in printf"
+		 (list val type) (list val)))
+     (else
+      (+ lo (modulo (- val lo) (1+ (- hi lo))))))))
+
+(define (mismatch-error who val type)
+  (scm-error 'wrong-type-arg who "cannot convert ~S to ~a for printf"
+	     (list val type) (list val)))
+
+(define (coerce-exact-integer _val type who)
+  (cond
+   ((exact-integer? _val) _val)
+   ((and (not ERROR_ON_MISMATCH) (real? _val) (finite? _val))
+    (inexact->exact (round _val)))
+   ((and (not ERROR_ON_MISMATCH) (char? _val))
+    (char->integer _val))
+   ((and (not ERROR_ON_MISMATCH) (pointer? _val))
+    (pointer-address _val))
+   (else
+    (mismatch-error who _val type))))
 
 (define (coerce-int _val type)
-  (let ((val (cond
-	      ((exact-integer? _val) _val)
-	      ((and (not ERROR_ON_MISMATCH) (real? _val))
-	       (inexact->exact (round _val)))
-	      ((and (not ERROR_ON_MISMATCH) (char? _val))
-	       (char->integer _val))
-	      ((and (not ERROR_ON_MISMATCH) (pointer? _val))
-	       (pointer-address _val))
-	      (else
-	       (scm-error 'wrong-type-arg "coerce-int" "cannot convert ~S to ~a for printf" (list _val type) (list _val))))))
-    ;; If I really wanted to, I could range check things here.
-    val))
+  (range-check (coerce-exact-integer _val type "coerce-int")
+	       type *signed-ranges* "coerce-int"))
 
 (define (coerce-unsigned _val type)
-  (let ((val (cond
-	      ((and (exact-integer? _val) (>= _val 0) _val)
-	       _val)
-	      ((and (not ERROR_ON_MISMATCH) (real? _val) (>= _val 0.0))
-	       (inexact->exact (round _val)))
-	      ((and (not ERROR_ON_MISMATCH) (char? _val))
-	       (char->integer _val))
-	      ((and (not ERROR_ON_MISMATCH) (pointer? _val))
-	       (pointer-address _val))
-	      (else
-	       (scm-error 'wrong-type-arg "coerce-int" "cannot convert ~S to ~a for printf" (list _val type) (list _val))))))
-    ;; If I really wanted to, I could range check things here.
-    val))
+  (range-check (coerce-exact-integer _val type "coerce-unsigned")
+	       type *unsigned-ranges* "coerce-unsigned"))
 
 (define (coerce-char _val type)
-  (let ((val (cond
-	      ((char? _val)
-	       _val)
-	      ((and (not ERROR_ON_MISMATCH) (exact-integer? _val))
-	       (integer->char _val))
-	      (else
-	       (scm-error 'wrong-type-arg "coerce-char" "cannot convert ~S to ~a for printf" (list _val type) (list _val))))))
-    ;; I could range check things here.
-    val))
+  (cond
+   ((char? _val)
+    _val)
+   ((and (not ERROR_ON_MISMATCH) (exact-integer? _val))
+    (integer->char _val))
+   (else
+    (mismatch-error "coerce-char" _val type))))
 
 (define (coerce-float _val type)
-  (let ((val (cond
-	      ((inexact? _val) _val)
-	      ((and (not ERROR_ON_MISMATCH) (number? _val) (exact? _val))
-	       (exact->inexact _val))
-	      (else
-	       (scm-error 'wrong-type-arg "coerce-float" "cannot convert ~S to ~a for printf" (list _val type) (list _val))))))
-    ;; I could range check things here.
-    val))
+  (cond
+   ((and (real? _val) (inexact? _val)) _val)
+   ((and (not ERROR_ON_MISMATCH) (real? _val))
+    (exact->inexact _val))
+   (else
+    (mismatch-error "coerce-float" _val type))))
+
+(define (coerce-string _val type)
+  (cond
+   ((string? _val) _val)
+   ((not ERROR_ON_MISMATCH) (format #f "~a" _val))
+   (else
+    (mismatch-error "coerce-string" _val type))))
+
+(define (coerce-pointer _val type)
+  (cond
+   ((pointer? _val) (pointer-address _val))
+   ((and (exact-integer? _val) (<= 0 _val UINTPTR_MAX)) _val)
+   (else
+    (mismatch-error "coerce-pointer" _val type))))
+
+;;; Entry points
 
 (define (asprintf _format-str . _args)
   "Given a format string and associated arguments, this returns
-a formatted string."
-  (let loop ((output (string-copy ""))
+a formatted string.
+
+For the %n conversion, the argument must be a procedure; it is called
+with the number of characters output so far."
+  (let loop ((output "")
 	     (format-str _format-str)
 	     (args _args))
-    (match (format-string-parser format-str)
-      ((str flags field-width precision length-modifier specifier)
-       (let ((argcount (format-argument-count field-width precision specifier)))
-	 ;;(format #t "output ~S format-str ~S args ~S~%"
-	;;	 output format-str args)
-	 ;;(format #t "str ~S flags ~S field-width ~S precision ~S length-modifier ~S specifier ~S argcount ~S~%"
-	;;	 str flags field-width precision length-modifier specifier argcount)
-    (when (< (length args) argcount)
-      (scm-error 'wrong-number-of-args "asprintf"
-                 "not enough arguments for format string: need ~a more, have ~a, format ~S"
-                 (list argcount (length args) _format-str)
-                 #f))         
-	  (let ((substr
-		 (apply format-string-dispatch
-		        (append
-			 (list str flags field-width precision length-modifier specifier)
-			 (take args argcount)))))
-	   (if (not (string-null? format-str))
+    (if (string-null? format-str)
+	output
+	(match (format-string-parser format-str)
+	  ((str flags field-width precision length-modifier specifier)
+	   (let ((argcount (format-argument-count field-width precision specifier)))
+	     (when (< (length args) argcount)
+	       (scm-error 'wrong-number-of-args "asprintf"
+			  "not enough arguments for format string: need ~a, have ~a, format ~S"
+			  (list argcount (length args) _format-str)
+			  #f))
+	     (let ((substr
+		    (if (eqv? specifier 'output-count)
+			(let ((proc (last (take args argcount))))
+			  (unless (procedure? proc)
+			    (mismatch-error "asprintf" proc 'procedure))
+			  (proc (string-length output))
+			  "")
+			(apply format-string-dispatch
+			       str flags field-width precision length-modifier specifier
+			       (take args argcount)))))
 	       (loop (string-append output substr)
 		     (string-drop format-str (string-length str))
-		     (drop args argcount))
-	       ;; else, we're done
-	       (string-append output substr))))))))
+		     (drop args argcount)))))))))
 
 (define (printf _format-str . _args)
-  (display (apply asprintf (append (list _format-str) _args))))
+  (display (apply asprintf _format-str _args)))
 
 (define (fprintf port _format-str . _args)
-  (display (apply asprintf (append (list _format-str) _args)) port))
+  (display (apply asprintf _format-str _args) port))
