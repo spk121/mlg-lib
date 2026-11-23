@@ -148,6 +148,10 @@ in FILENAME"
                        "C:\\Windows"))))
 
 
+(define (get-windows-directory-root)
+  "The root directory of the Windows system drive, such as C:\\."
+  (string-append (or (getenv "SystemDrive") "C:") "\\"))
+
 (define (get-system-data-dirs)
   "Returns a list of directories that are the default
 data directories."
@@ -165,8 +169,9 @@ data directories."
         (osname (utsname:sysname (uname))))
     (cond
      ((string=? osname "Windows")
-      (valid-windows-home-dir home-env))
-     ((and (file-exists? home-env)
+      (valid-windows-home-dir (or home-env "")))
+     ((and home-env
+           (file-exists? home-env)
            (file-test-directory? home-env))
       home-env)
      (else
@@ -226,74 +231,58 @@ data directories."
 
 (define (get-user-runtime-dir)
   "Return a path to the XDG runtime directory for the current user."
-  (let ((env (getenv "XDG_RUNTIME_HOME")))
+  (let ((env (getenv "XDG_RUNTIME_DIR")))
     (if (and env (not (string-null? env)))
         env
         ;; else
         (get-user-cache-dir))))
 
-;; Remember read-string is get-file-contents
 (define (get-user-special-dir special)
   "Given a string that represents an XDG user directory, such as
 \"desktop\", \"documents\", \"download\", \"music\", \"pictures\", or
 \"videos\", this routine checks the configuration for the path to that
-user directory."
-  (let* (;; Open the XDG config file
-         (config-file (build-filename (get-user-config-dir)
-                                      "user-dirs.dirs"))
-         (config-port (open-input-file config-file))
+user directory.  It returns #f if the directory is not configured."
+  (let ((config-file (build-filename (get-user-config-dir)
+                                     "user-dirs.dirs"))
+        ;; Construct an XDG directory name from SPECIAL
+        (xdg-directory-label (string-append
+                              "XDG_"
+                              (string-upcase special)
+                              "_DIR")))
+    (and (file-exists? config-file)
+         (call-with-input-file config-file
+           (lambda (config-port)
+             ;; Loop over each line in "user-dirs.dirs" looking for a match.
+             (let loop ((orig-config-entry (read-line config-port)))
+               (if (eof-object? orig-config-entry)
+                   ;; We've reached the end, so give up
+                   #f
+                   (let* ((config-entry (string-trim-both orig-config-entry))
+                          ;; The part that matters is in between the
+                          ;; quotation marks.
+                          (left (string-index config-entry #\"))
+                          (right (string-rindex config-entry #\"))
+                          (dir (and left right (< left right)
+                                    (substring config-entry (1+ left) right))))
+                     (cond
+                      ((or (not (string-prefix? (string-append xdg-directory-label "=")
+                                                config-entry))
+                           (not dir))
+                       ;; This entry doesn't match, or is malformed, so
+                       ;; keep looking
+                       (loop (read-line config-port)))
 
-         ;; Construct an XDG directory name from SPECIAL
-         (xdg-directory-label (string-append
-                               "XDG_"
-                               (string-upcase special)
-                               "_DIR")))
-    (write config-file) (newline)
-    (write xdg-directory-label) (newline)
-    ;; Loop over each line in "user-dirs.dirs" looking for a match.
-    (let loop ((orig-config-entry (read-line config-port)))
-      (if (eof-object? orig-config-entry)
-          ;; We've reached the end, so give up
-          (begin
-            (close-port config-port)
-            #f)
+                      ((string-prefix? "$HOME/" dir)
+                       ;; Replace $HOME/ with the user's home directory.
+                       (build-filename (get-home-dir) (string-drop dir 6)))
 
-          ;; Otherwise, let's check this entry
-          (let ((config-entry (string-trim-both orig-config-entry)))
-            (cond
-             ((not (string-prefix? xdg-directory-label config-entry))
-              ;; This entry doesn't match, so keep looking
-              (loop (read-line config-port)))
+                      ((string-prefix? "/" dir)
+                       ;; Return an absolute path
+                       dir)
 
-             ((string-prefix? xdg-directory-label config-entry)
-              ;; We've found a matching line, so get the right-hand side.
-              ;; The part that matters is in between the quotation marks.
-              (let ((left (string-index config-entry #\"))
-                    (right (string-rindex config-entry #\"))
-                    (dir ""))
-                (if (or (not left) (not right) (= left right))
-                    ;; This entry is malformed with regards to
-                    ;; quotation marks, so keep looking.
-                    (loop (read-line config-port))
-
-                    ;; Otherwise, looks like we found something in
-                    ;; quotation marks.
-                    (begin
-                      (set! dir (substring config-entry (1+ left) right))
-                      (cond
-                       ((string-prefix? "$HOME/" dir)
-                        ;; Return a relative path, dropping $HOME/ and
-                        ;; replacing it with the user's home
-                        ;; directory.
-                        (build-filename (get-home-dir) (string-drop dir 6)))
-
-                       ((string-prefix? "/" dir)
-                        ;; Return an absolute path
-                        dir)
-
-                       (else
-                        ;; This entry is malformed, so keep looking
-                        (loop (read-line config-port))))))))))))))
+                      (else
+                       ;; This entry is malformed, so keep looking
+                       (loop (read-line config-port))))))))))))
 
 (define (find-data-file filename)
   "Search for FILENAME in the standard data file directories for this user,
