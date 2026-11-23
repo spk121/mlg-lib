@@ -194,40 +194,31 @@ used as input.
 If the bytevector is of length zero, an empty list is returned."
   (unless end
     (set! end (bytevector-length bv)))
-  (let ((result '()))
-    (do ((i start (1+ i)))
-        ((>= i end))
-      (set! result (append! result
-                            (list (proc (bytevector-u8-ref bv i))))))
-    result))
+  ;; Build the list from the right, so each element is consed once.
+  (let loop ((i (1- end))
+             (result '()))
+    (if (< i start)
+        result
+        (loop (1- i) (cons (proc (bytevector-u8-ref bv i)) result)))))
 
 (define* (read-bytevector #:optional (port (current-input-port))
                          (count *maximum-read*))
   "Read all of the characters out of PORT and return them as a
 bytevector.  If PORT is not supplied, use the current input port.  If
 COUNT is provided, treat it as the maximum number of bytes to read."
-  (let ([n 0]
-        [buf (make-bytevector *block-size* 0)])
-    (let loop ([bytes-to-read (min (- count n) *block-size*)]
-               [output (make-bytevector 0)])
-      (let ([bytes-read (get-bytevector-n! port buf 0 bytes-to-read)])
-        (if (eof-object? bytes-read)
-            ;; We're done. Return the complete output
-            output
-            ;; Not done yet. Append this block to output.
-            (let* ([output-len (bytevector-length output)]
-                   [new-output (make-bytevector (+ output-len bytes-read))])
-              (bytevector-copy! output 0
-                                new-output 0 output-len)
-              (bytevector-copy! buf 0
-                                new-output output-len bytes-read)
-              (set! n (+ n bytes-read))
-              (if (> (- count n) 0)
-                  ;; Still more to read; loop again.
-                  (loop (min (- count n) *block-size*)
-                        new-output)
-                  ;; Otherwise, we've reached COUNT bytes, so stop.
-                  new-output)))))))
+  ;; Collect the blocks in a list, and join them once at the end, so
+  ;; that each byte is copied only twice.
+  (let loop ([n 0]
+             [blocks '()])
+    (let* ([bytes-to-read (min (- count n) *block-size*)]
+           [block (if (zero? bytes-to-read)
+                      (eof-object)
+                      (get-bytevector-n port bytes-to-read))])
+      (if (eof-object? block)
+          ;; We're done. Return the complete output.
+          (bytevector-list-append (reverse blocks))
+          (loop (+ n (bytevector-length block))
+                (cons block blocks))))))
 
 (define (subbytevector source source-start len)
   "Given a source bytevector, a start location in the bytevector,
