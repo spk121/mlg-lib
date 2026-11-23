@@ -39,4 +39,23 @@
 (test-equal "read-line-terminator LF + LF"
 	    "\n" (read-line-terminator (open-input-string "\n\n")))
 
+;; Further fixes
+(test-equal "peek-char-islower? uppercase" #f
+  (peek-char-islower? (open-input-string "A")))
+(test-equal "peek-char-islower? lowercase" #t
+  (peek-char-islower? (open-input-string "a")))
+(test-equal "read-char=? consumes the character" '(#t #\b)
+  (let ((p (open-input-string "ab")))
+    (list (read-char=? p #\a) (read-char p))))
+(test-equal "read-regex-string pushes back onto its own port" '(#f #\/)
+  (let ((p (open-input-string "/")))
+    (list (read-regex-string p) (read-char p))))
+(test-equal "read-regex-string delimited" "/a[b]c/"
+  (read-regex-string (open-input-string "/a[b]c/d")))
+(test-equal "read-integer keeps a sign with no digits" '(0 #\-)
+  (let ((p (open-input-string "-z")))
+    (list (read-integer p) (read-char p))))
+(test-equal "read-integer hex" '(31 #\g)
+  (let ((p (open-input-string "  0x1Fg")))
+    (list (read-integer p) (read-char p))))
 (test-end "t-mlg-port")
