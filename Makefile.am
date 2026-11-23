@@ -90,6 +90,8 @@ TESTS = \
   tests/t-mlg-lists.scm \
   tests/t-mlg-math.scm \
   tests/t-mlg-ports.scm \
+  tests/t-mlg-journal.scm \
+  tests/t-mlg-utils.scm \
   tests/t-ryu-core.scm \
   tests/t-ryu-printf.scm
 

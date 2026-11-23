@@ -21,6 +21,7 @@
   #:use-module (mlg characters)
   #:use-module (ice-9 regex)
   #:use-module (ice-9 format)
+  #:use-module (rnrs bytevectors)
   #:use-module (mlg assert)
   #:use-module (mlg logging)
   #:export (string-base-length
@@ -652,5 +653,30 @@ Maps the procedure F of the elements of a list of strings,
 appending the results together as a single string."
   (apply string-append (map f lst)))
 
-(define (strings-load-extension)
-  (load-extension "libmlg" "init_strings_lib"))
+;; There are many versions of this algorithm out in the public
+;; domain.  It claims to implement the CCITT X.25 version of CRC-16.
+(define (string-crc16 str)
+  "Compute a 16-bit CRC of the UTF-8 encoding of the string STR, using
+the CCITT X.25 polynomial.  The two bytes of the result are swapped, as
+in the original C version of this procedure."
+  (assert (string? str))
+  (let* ((bv (string->utf8 str))
+         (len (bytevector-length bv))
+         (crc (let loop ((i 0) (crc #xffff))
+                (if (= i len)
+                    crc
+                    (loop (1+ i)
+                          (let bitloop ((bit 0)
+                                        (data (bytevector-u8-ref bv i))
+                                        (crc crc))
+                            (if (= bit 8)
+                                crc
+                                (bitloop (1+ bit)
+                                         (ash data -1)
+                                         (if (logtest 1 (logxor crc data))
+                                             (logxor (ash crc -1) #x8408)
+                                             (ash crc -1)))))))))
+         (inv (logand #xffff (lognot crc))))
+    ;; Swap the bytes.
+    (logior (ash (logand inv #xff) 8)
+            (ash inv -8))))

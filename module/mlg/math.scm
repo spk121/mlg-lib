@@ -603,10 +603,23 @@ h as a step size."
 (define transpose-2d-f32-array    f32d2-transpose-array)
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;; For C-defined functions
+;; Formerly C-defined functions
 
-(define *math-lib-loaded* #f)
+(define (real->integer u)
+  "Convert the real number U to an integer by truncating toward zero,
+as a C cast to an integer type would.  The result must be a fixnum;
+otherwise, an out-of-range error is signaled."
+  (unless (real? u)
+    (scm-error 'wrong-type-arg "real->integer"
+               "Wrong type argument in position ~A: ~S" (list 1 u) (list u)))
+  ;; Comparisons with NaN are false, so NaN is out of range, too.
+  (unless (and (< u (1+ most-positive-fixnum))
+               (>= u most-negative-fixnum))
+    (scm-error 'out-of-range "real->integer"
+               "Argument out of range: ~S" (list u) (list u)))
+  (inexact->exact (truncate u)))
+
 (define (math-load-extension)
-  (unless *math-lib-loaded*
-    (set! *math-lib-loaded* #t)
-    (load-extension "libmlg" "init_math_lib")))
+  "Formerly loaded the C version of REAL->INTEGER.  It is now written in
+Scheme, so this does nothing.  It is kept for compatibility."
+  #t)

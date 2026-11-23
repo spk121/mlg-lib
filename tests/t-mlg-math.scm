@@ -153,4 +153,17 @@
   '((1 4) (1 3)) (array-shape (transpose-2d-f32-array (make-2d-f32-array 3 4))))
 
 ;; Finish the testsuite, and report results.
+
+;; real->integer, a pure Scheme version of the C function
+(test-equal "real->integer truncates positive" 3 (real->integer 3.7))
+(test-equal "real->integer truncates negative" -3 (real->integer -3.7))
+(test-equal "real->integer exact rational" -3 (real->integer -7/2))
+(test-equal "real->integer is exact" #t (exact? (real->integer 2.0)))
+(test-equal "real->integer largest fixnum"
+  most-positive-fixnum (real->integer most-positive-fixnum))
+(test-error "real->integer too large" 'out-of-range (real->integer 1e19))
+(test-error "real->integer NaN" 'out-of-range (real->integer +nan.0))
+(test-error "real->integer infinity" 'out-of-range (real->integer -inf.0))
+(test-error "real->integer non-number" 'wrong-type-arg (real->integer "1"))
+
 (test-end "t-mlg-math")

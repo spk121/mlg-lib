@@ -19,6 +19,7 @@
 (define-module (mlg utils)
   #:use-module (srfi srfi-1)
   #:use-module (ice-9 rdelim)
+  #:use-module (system foreign)
   #:export (get-prgname
             get-user-name
 
@@ -39,8 +40,6 @@
             ;; Searches
             find-data-file
 
-            ;; From binary
-            utils-extensions
             getpagesize))
 
 (define (search-path-separator-string)
@@ -319,5 +318,13 @@ any of this user's data directories."
              (else
               (loop (car rest) (cdr rest)))))))))
 
-(define (utils-load-extension)
-  (load-extension "libmlg" "init_utils_lib"))
+(define %getpagesize
+  ;; getpagesize(2) is in the C libraries of GNU/Linux, the BSDs and
+  ;; macOS.  Look it up once, through the dynamic FFI.
+  (false-if-exception
+   (pointer->procedure int (dynamic-func "getpagesize" (dynamic-link)) '())))
+
+(define (getpagesize)
+  "Return the size of a memory page in bytes, or #f if it can't be
+determined."
+  (and %getpagesize (%getpagesize)))

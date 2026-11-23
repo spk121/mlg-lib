@@ -91,4 +91,15 @@
   "acde"
   (string-sed-substitute "abcde" "(b)(cd)" "\\2" ""))
 
+
+;; string-crc16, a pure Scheme version of the C function.
+;; #x906E is the CRC-16/X.25 check value; the bytes are swapped.
+(test-equal "string-crc16 check value" #x6E90 (string-crc16 "123456789"))
+(test-equal "string-crc16 empty string" 0 (string-crc16 ""))
+(test-equal "string-crc16 uses UTF-8" (string-crc16 "é") (string-crc16 "é"))
+(test-assert "string-crc16 differs for different strings"
+  (not (= (string-crc16 "a") (string-crc16 "b"))))
+(test-assert "string-cell-length with wide characters"
+  (= 5 (string-cell-length "a中文" 8)))
+
 (test-end "t-mlg-strings")
