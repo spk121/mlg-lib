@@ -91,9 +91,10 @@
    (char-set-contains? char-set:ascii c)))
 
 (define (ascii-isprint? c)
-  "Return #t if C is both ASCII and a printing character."
+  "Return #t if C is both ASCII and a printing character, that is, a
+graphic character or a space."
   (and
-   (char-set-contains? char-set:printing c)
+   (isprint? c)
    (char-set-contains? char-set:ascii c)))
 
 (define (ascii-ispunct? c)
@@ -152,8 +153,11 @@ value."
   (char-set-contains? char-set:lower-case c))
 
 (define (isprint? c)
-  "Return #t if C is a printing character."
-   (char-set-contains? char-set:printing c))
+  "Return #t if C is a printing character: a graphic character or a
+space.  As in C, and unlike Guile's char-set:printing, this does not
+include tabs, newlines or other whitespace control characters."
+  (or (char=? c #\space)
+      (char-set-contains? char-set:graphic c)))
 
 (define (ispunct? c)
   "Return #t if C is a graphical character that is not alphanumeric.
@@ -302,7 +306,11 @@ characters and unassigned code points, and 1 otherwise."
      (else 1))))
 
 (define (char-count-cells chr x tabSize)
-  "Number of cells a character CHR at column X would take up"
+  "Number of cells a character CHR at column X would take up.  ASCII
+control characters are counted as two cells, for their \"^X\" form.
+Other characters that have no defined width, such as C1 controls and
+unassigned code points, are counted as one cell, for the placeholder a
+terminal would show."
   (cond
    [(eqv? chr #\nul)
     0]
@@ -312,7 +320,8 @@ characters and unassigned code points, and 1 otherwise."
     ;; Add 1 for the caret '^'
     (+ 1 (wcwidth (char-get-display-representation-of-control-char chr)))]
    [else
-    (wcwidth chr)]))
+    (let ((w (wcwidth chr)))
+      (if (< w 0) 1 w))]))
 
 (define (char-combining-mark? c)
   "Return #t if this is a combining mark, like an accent"

@@ -105,4 +105,10 @@
 (test-equal "wcwidth line separator" -1 (wcwidth #\x2028))
 (test-equal "char-count-cells CJK ideograph" 2 (char-count-cells #\x4e2d 0 8))
 
+(test-equal "isprint? space" #t (isprint? #\space))
+(test-equal "isprint? tab" #f (isprint? #\tab))
+(test-equal "ascii-isprint? newline" #f (ascii-isprint? #\newline))
+(test-equal "ascii-isprint? tilde" #t (ascii-isprint? #\~))
+(test-equal "char-count-cells C1 control" 1 (char-count-cells #\x85 0 8))
+(test-equal "char-count-cells unassigned" 1 (char-count-cells #\x378 0 8))
 (test-end "t-mlg-characters")
