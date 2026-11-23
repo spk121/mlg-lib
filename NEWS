@@ -1,0 +1,88 @@
+mlg_lib NEWS
+
+* Version 2.0
+
+** Incompatible changes
+
+- The C extension library, libmlg, has been removed, and is no longer
+  built or installed.  Every procedure it provided is now written in
+  Scheme (wcwidth, string-crc16, real->integer, send-alist-to-journal
+  and send-alist-to-syslog) or called through Guile's FFI
+  (getpagesize).  Building the package no longer needs a C compiler,
+  libtool, gettext, or the systemd development headers.
+
+- characters-load-extension and math-load-extension now do nothing.
+  They are kept so that existing callers keep working.
+
+- (mlg utils) no longer exports utils-extensions, which was never
+  defined.
+
+- isprint? and ascii-isprint? in (mlg characters), and isprint? and
+  ispunct? in (ryu core), now follow C: isprint? is graphic characters
+  and space, without tabs or newlines, and ispunct? includes symbols
+  such as $, + and ~.
+
+- send-alist-to-journal and send-alist-to-syslog return 0 and #f when
+  the journal or syslog daemon cannot be reached, instead of reporting
+  success.
+
+- log-error, and other fatal log messages, enter the debugging REPL
+  before exiting when the program is interactive and breakpoints are
+  enabled with (mlg debug).  Non-interactive programs exit with status
+  1, as before.
+
+- In (ryu core), strtol, strtoimax and related procedures clamp
+  out-of-range values to the C limits, ctolower and ctoupper return
+  their argument unchanged when there is no case mapping, and
+  snprintf keeps N - 1 characters, as in C.
+
+- In (ryu printf), %n takes a procedure, which is called with the
+  number of characters output so far.  Integer conversions raise an
+  error for values outside the range of their C type.
+
+** New features
+
+- (mlg characters) exports wcwidth.  It gives the same results as
+  glibc's wcwidth in a UTF-8 locale for every code point, whatever the
+  current locale.
+
+- (mlg journal) exports the parameters journal-socket-path and
+  syslog-socket-path.
+
+- (mlg regex) is now built and installed.
+
+- (mlg math) array-sum-product-of-slice-pairs, which was exported but
+  undefined, is now implemented.
+
+- (ryu core) adds strtoul, strtoumax, nextafter, strncat, strnlen,
+  strtok, memmove and other procedures that were exported but
+  undefined, and implements the math procedures that were stubs:
+  ilogb, logb, ldexp, scalbn, log2, modf, cbrt, hypot, erf, tgamma,
+  lgamma, lround, fmod, remquo and fdim.
+
+** Bug fixes
+
+- (ryu printf) now matches glibc's printf for every flag, width,
+  precision and conversion, including %g, %a, the h length modifier,
+  and .* precisions.
+
+- (mlg logging) prints the level name (WARNING, DEBUG and so on),
+  reports 1-based line numbers from the call site, and recovers when a
+  log writer raises an error.
+
+- assert evaluates its expression only once and reports 1-based line
+  numbers.
+
+- string-crc16, real->integer and getpagesize were exported but
+  unbound, because their extensions were never loaded.  They now work.
+
+- read-bytevector, bytevector-u8-map-to-list and string-cell-length
+  were quadratic, and are now linear.
+
+- Many smaller fixes in (mlg characters), (mlg math), (mlg port),
+  (mlg strings), (mlg time), (mlg utils) and (ryu core).  See the git
+  log for details.
+
+* Version 1.0
+
+Initial release.

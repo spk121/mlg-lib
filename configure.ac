@@ -1,4 +1,4 @@
-AC_INIT(mlg_lib, 1.0, mike@lonelycactus.com)
+AC_INIT(mlg_lib, 2.0, mike@lonelycactus.com)
 AC_CONFIG_AUX_DIR([build-aux])
 AC_CONFIG_SRCDIR([module/mlg/strings.scm])
 AM_INIT_AUTOMAKE([-Wall -Werror foreign])
