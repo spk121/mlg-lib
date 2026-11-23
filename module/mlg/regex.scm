@@ -1,4 +1,5 @@
 (define-module (mlg regex)
+  #:use-module (ice-9 regex)
   #:use-module (ryu core)
   #:export (delimited-string->regexp))
 
@@ -16,7 +17,6 @@ isn't a character class specifier."
 
    ;; Start searching for close bracket.
    (while (not (member (string-ref-safe str s) '(#\] #\newline #\null)))
-     (format #t "~a ~a~%" (string-ref-safe str s) s)
      ;; If we find "[." or "[:" or "[=", these subexpressions need
      ;; their own closing bracket, but, don't nest.
      (when (and (char=? #\[ (string-ref-safe str s))
@@ -36,8 +36,7 @@ isn't a character class specifier."
 delimiter (such as '/'), this procedure extracts a regular expression
 pattern between the delimiter pairs, or will throw an error if no
 valid regular expression pattern is found."
-  (let ((delimiter (string-ref-safe str 0))
-	(err #f))
+  (let ((delimiter (string-ref-safe str 0)))
     (let loop ((i 1))
       (let ((c (string-ref-safe str i)))
 	(if (not (member c (list delimiter #\newline #\null)))
@@ -46,15 +45,16 @@ valid regular expression pattern is found."
 	      ;; The beginning of a character class subexpression
 	      (let ((end (parse-char-class str i)))
 		(if (not end)
-		    (error "unbalanced parentheses in regex ~s" str)
+		    (error "unbalanced brackets in regex:" str)
 		    ;; else
 		    (loop (1+ end)))))
 	     ((char=? c #\\)
 	      (let ((next (string-ref-safe str (1+ i))))
 		(if (member next '(#\null #\newline))
-		    (error "trailing backslash in regex ~s" str)
-		    ;; else
-		    (loop (1+ i)))))
+		    (error "trailing backslash in regex:" str)
+		    ;; else skip both the backslash and the escaped character,
+		    ;; which might be the delimiter.
+		    (loop (+ i 2)))))
 	     (else
 	      (loop (1+ i))))
 	    ;; else return the extracted pattern
@@ -73,21 +73,23 @@ pattern in between, it returns the previously compiled expression, if
 any.
 
 Will throw a 'misc-error on exception."
-  (let ((delimiter (string-ref-safe str 0))
-	(rx #f))
+  (let ((delimiter (string-ref-safe str 0)))
     (cond
      ((char=? delimiter #\space)
-      (error "invalid regex delimiter ~s" delimiter))
+      (error "invalid regex delimiter:" delimiter))
      ((or (member delimiter '(#\newline #\null))
-	  (member (string-ref-safe str 1) '(#\newline #\null delimiter)))
+	  (member (string-ref-safe str 1) (list #\newline #\null delimiter)))
       ;; Return the previous pattern, if any.
       (or *prev-pattern*
-	  (error "no regex pattern in ~s" str)))
+	  (error "no regex pattern in:" str)))
      (else
       (let ((compiled-rx (make-regexp (extract-pattern str))))
 	(set! *prev-pattern* compiled-rx)
 	compiled-rx)))))
 
+;; FIXME: an unfinished parser for ed-style line addresses.  It is kept
+;; here, commented out, until it is completed.
+#|
 (define (next-addr str i current-addr addr-last)
   (let ((i (skip-blanks str i))
 	(first #t)
@@ -132,3 +134,4 @@ Will throw a 'misc-error on exception."
        ((member c '(#\% #\, #\;))
 	(when first
 		    
+|#

@@ -21,13 +21,13 @@ dist_mlgguilesite_DATA = \
  module/mlg/numval.scm \
  module/mlg/port.scm \
  module/mlg/procedure.scm \
+ module/mlg/regex.scm \
  module/mlg/strings.scm \
  module/mlg/time.scm \
  module/mlg/typechecking.scm \
  module/mlg/utils.scm
 
 # nodist_data_DATA = \
-#  module/mlg/regex.scm \
 #  module/mlg/spreadsheet.scm \
 #  module/mlg/state.scm
 
@@ -70,6 +70,7 @@ TESTS = \
   tests/t-mlg-lists.scm \
   tests/t-mlg-math.scm \
   tests/t-mlg-ports.scm \
+  tests/t-mlg-regex.scm \
   tests/t-mlg-journal.scm \
   tests/t-mlg-utils.scm \
   tests/t-ryu-core.scm \
