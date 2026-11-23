@@ -70,11 +70,13 @@ this timer."
   (timer-elapsed timer))
 
 (define (timer-continue timer)
-  "Resumes a timer that has been stopped with 'timer-stop'."
+  "Resumes a timer that has been stopped with 'timer-stop'.  If the
+timer is already running, this does nothing."
   ;; (assert-type timer? timer)
-  (let ((elapsed (- (timer-end-time timer)
-                    (timer-start-time timer))))
-    (set-timer-start-time! timer (- (monotonic-time)
-                                    elapsed))
-    (set-timer-running! timer #t)))
+  (unless (timer-running? timer)
+    (let ((elapsed (- (timer-end-time timer)
+                      (timer-start-time timer))))
+      (set-timer-start-time! timer (- (monotonic-time)
+                                      elapsed))
+      (set-timer-running! timer #t))))
 
