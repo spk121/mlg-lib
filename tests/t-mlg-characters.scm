@@ -17,15 +17,13 @@
   #\space (U+ #x0020))
 
 ;; characters-load-extension
-;; Bug fix: characters-load-extension was not exported and was not called
-;; at module load time, leaving wcwidth unbound.  It is now called
-;; automatically.  Calling it again from user code must be harmless.
+;; WCWIDTH is now written in Scheme, so this is a no-op kept for
+;; compatibility.  Calling it from user code must be harmless.
 (test-assert "characters-load-extension is exported and idempotent"
   (begin (characters-load-extension) #t))
 
 ;; char-count-cells
-;; These tests span all four branches of char-count-cells and also
-;; confirm that wcwidth is available (i.e., the C extension was loaded).
+;; These tests span all four branches of char-count-cells.
 
 ;; NUL takes 0 cells regardless of column or tab size.
 (test-equal "char-count-cells NUL at col 0"
@@ -84,4 +82,33 @@
   #f (char-combining-mark? #\0))
 
 ;; Finish the testsuite, and report results.
+
+;; wcwidth, a pure Scheme version of the C function.  Its results were
+;; checked against glibc's wcwidth in C.UTF-8 for every code point.
+(test-equal "wcwidth NUL" 0 (wcwidth #\nul))
+(test-equal "wcwidth ASCII letter" 1 (wcwidth #\a))
+(test-equal "wcwidth control character" -1 (wcwidth #\x1b))
+(test-equal "wcwidth DEL" -1 (wcwidth #\delete))
+(test-equal "wcwidth C1 control" -1 (wcwidth #\x85))
+(test-equal "wcwidth combining acute accent" 0 (wcwidth #\x301))
+(test-equal "wcwidth zero width space" 0 (wcwidth #\x200b))
+(test-equal "wcwidth soft hyphen" 1 (wcwidth #\xad))
+(test-equal "wcwidth Hangul medial vowel" 0 (wcwidth #\x1161))
+(test-equal "wcwidth CJK ideograph" 2 (wcwidth #\x4e2d))
+(test-equal "wcwidth Hangul syllable" 2 (wcwidth #\xac00))
+(test-equal "wcwidth fullwidth A" 2 (wcwidth #\xff21))
+(test-equal "wcwidth emoji" 2 (wcwidth #\x1f600))
+;; U+2FFC is newer than Guile's Unicode tables, but is in glibc's.
+(test-equal "wcwidth recent ideographic description character" 2 (wcwidth #\x2ffc))
+(test-equal "wcwidth plane 2 noncharacter" -1 (wcwidth #\x2fffd))
+(test-equal "wcwidth unassigned" -1 (wcwidth #\x378))
+(test-equal "wcwidth line separator" -1 (wcwidth #\x2028))
+(test-equal "char-count-cells CJK ideograph" 2 (char-count-cells #\x4e2d 0 8))
+
+(test-equal "isprint? space" #t (isprint? #\space))
+(test-equal "isprint? tab" #f (isprint? #\tab))
+(test-equal "ascii-isprint? newline" #f (ascii-isprint? #\newline))
+(test-equal "ascii-isprint? tilde" #t (ascii-isprint? #\~))
+(test-equal "char-count-cells C1 control" 1 (char-count-cells #\x85 0 8))
+(test-equal "char-count-cells unassigned" 1 (char-count-cells #\x378 0 8))
 (test-end "t-mlg-characters")

@@ -3,27 +3,27 @@
   #:export (assert
             assert-type))
 
-(define-syntax __FILE__
-   (syntax-rules ()
-     ((_)
-      (or (assv-ref (current-source-location) 'filename)
-	  "(unknown file)"))))
-
-(define-syntax __LINE__
-   (syntax-rules ()
-     ((_)
-      (or (assv-ref (current-source-location) 'line)
-	  "(unknown line)"))))
+(eval-when (expand load eval)
+  (define (source-file x)
+    (let ((src (syntax-source x)))
+      (or (and src (assq-ref src 'filename)) "(unknown file)")))
+  (define (source-line x)
+    ;; Guile counts lines from zero; error messages count from one.
+    (let* ((src (syntax-source x))
+           (line (and src (assq-ref src 'line))))
+      (if line (1+ line) "(unknown line)"))))
 
 (define-syntax assert
   (lambda (x)
     (syntax-case x ()
       ((_ expression)
-       #'(let ((ret expression))
-	   (unless ret
-	     (error
-	      (format #f "~a:~a: assertion failed: ~a = ~s"
-		      (__FILE__) (__LINE__) 'expression expression))))))))
+       (with-syntax ((file (datum->syntax x (source-file x)))
+                     (line (datum->syntax x (source-line x))))
+         ;; EXPRESSION is evaluated only once.
+         #'(unless expression
+             (error
+              (format #f "~a:~a: assertion failed: ~s"
+                      file line 'expression))))))))
 
 (define-syntax assert-type
   (lambda (x)

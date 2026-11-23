@@ -11,7 +11,7 @@ ENV VERBOSE true
 
 RUN apt-get update \
   && apt-get install -y \
-  guile-2.2-dev libtool texinfo autoconf automake gnulib git \
+  guile-2.2-dev texinfo autoconf automake gnulib git \
   texlive-base texlive-generic-recommended texlive-latex-base
 
 

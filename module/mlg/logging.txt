@@ -8,8 +8,8 @@ INITIALIZATION
 To use logging, use the (mlg logging) module.  When initializing
 logging you may want to set a DOMAIN string.  You may want to chose to
 not ignore debug messages by setting the MESSAGES_DEBUG environment
-variable. You need to decide between logging to stderr or logging to
-the systemd journal.  And you may want to disable color messages.
+variable. You need to decide between logging to stderr, to the systemd
+journal, or to syslog.  And you may want to disable color messages.
 
 So first, at inititialization, you can optionally set the DOMAIN,
 which is a string which is usually the program name or library name
@@ -38,22 +38,27 @@ logged and are silently dropped.
         environment variable to "all", it will log all messages from
         all domains.
 
-At initialization, you should choose which type of log writer you want
-to use for your domain.  By default, log messages are sent to the
-current error port.  Two log writers are included by default.
+At initialization, you should choose where log messages go.  By
+default, log messages are sent to the current error port.  The default
+writer can also send them to the systemd journal and to syslog, which
+are turned on or off with these procedures.
 
-- (log-writer-standard-streams log-level fields-alist)
+- (log-enable-stream-output bool)
+- (log-enable-journal-output bool)
+- (log-enable-syslog-output bool)
 
-        Writes log messages to the current error port. If the
-	LOG_LEVEL_INFO and LOG_LEVEL_DEBUG messages are being printed
-	because the MESSAGES_DEBUG environment variable is set, those
-	messages are sent to the current output port.
+        Given BOOL, which is #t or #f, enable or disable logging to
+        the standard error and output ports (on by default), to the
+        systemd journal, or to syslog (both off by default).
 
-- (log-writer-journal log-level fields-alist)
+        When logging to the standard ports, LOG_LEVEL_INFO and
+        LOG_LEVEL_DEBUG messages, which are only printed when the
+        MESSAGES_DEBUG environment variable is set, are sent to the
+        current output port.  Other messages go to the current error
+        port.
 
-        Writes log messages to the systemd journal.
-
-You can switch between the two by calling log-set-default-handler.
+Instead of the default writer, you can choose one that sends every
+message to just one place, or your own procedure.
 
 - (log-set-default-writer proc)
 
@@ -61,9 +66,15 @@ You can switch between the two by calling log-set-default-handler.
 	integer and an alist of key/value pairs.  All following
 	log messages will be logged using that procedure.
 
-	As a special case, if PROC is the symbol 'standard,
-	log-writer-standard-streams will be used.  If PROC is the
-	symbol 'journal, log-writer-journal will be used.
+	As a special case, if PROC is the symbol 'standard, messages
+	are written to the standard ports.  If PROC is the symbol
+	'journal, they are sent to the systemd journal.  If PROC is
+	the symbol 'syslog, they are sent to syslog.
+
+- (call-with-log-file filename thunk)
+
+        Call THUNK, appending all log messages to FILENAME in addition
+        to any other enabled outputs.  Calls may not be nested.
 
 When logging to the standard streams, log messages will be colorized
 if the TERM environment variable is set to a terminal that can handle
@@ -83,11 +94,17 @@ There are some procedures for logging at different levels.
 - (log-message msg ...)
 - (log-debug msg ...)
 - (log-warning msg ...)
+- (log-critical msg ...)
 - (log-error msg ...)
 
 Each of these takes a string message which may contain (ice-9 format)
 escapes like '~a' and '~s'.  If there are additional parameters given,
-it will merge them with message using format.
+it will merge them with message using format.  Each message records
+the file, line and procedure it was logged from.
+
+LOG_LEVEL_ERROR messages are fatal: after log-error logs its message,
+the program exits.  If the program is interactive and breakpoints are
+enabled with (mlg debug), it first enters the debugging REPL.
 
 PROGRAMMING ERROR PROCEDURES
 
@@ -107,7 +124,7 @@ public function.
         If expression is false, log a critical error logging the value
 	of val.
 
-        The return value is unspecified.
+        The procedure returns the value of expression.
 
 - (warn-if-used expression)
 
@@ -128,9 +145,10 @@ Here are some debugging procedures.  Remember that debug-level
 messages are only printed if the MESSAGES_DEBUG environment variable
 has been set to include the current domain, or "all".
 
-- (log-debug-pk val1 ...)
+- (log-debug-pk expression)
 
-        Logs a debug-level message that prints all the parameters.
+        Logs a debug-level message that prints the expression and its
+        value, and then returns the value.
 
 - (log-debug-locals)
 
@@ -145,7 +163,7 @@ has been set to include the current domain, or "all".
 STRUCTURED LOGGING
 
 The low-level logging functions are 'log-structured' and
-'log-structured-array'.  They expect log information as a set of
+'log-structured-alist'.  They expect log information as a set of
 key/value pairs.  There are some keys that are common across log
 messages.  But, when log-structured is used, any key/value pair can be
 added.
@@ -181,7 +199,7 @@ common keys one might like to include are
 - "PID"
 
 These log-warning family of convenience macros are wrappers around
-'log-structured' and 'log-structured-array'.
+'log-structured' and 'log-structured-alist'.
 
 - (log-structured domain log-level key1 value1 ...)
 
@@ -193,7 +211,7 @@ These log-warning family of convenience macros are wrappers around
 	LOG_LEVEL_ERROR, LOG_LEVEL_CRITICAL, LOG_LEVEL_WARNING,
 	LOG_LEVEL_MESSAGE, LOG_LEVEL_INFO or LOG_LEVEL_DEBUG.
 
-- (log-structured-array log-level alist)
+- (log-structured-alist log-level alist)
 
         Logs a message of one or more key/value pairs.  The key/value
 	pairs passed in via an association list.
@@ -201,10 +219,10 @@ These log-warning family of convenience macros are wrappers around
 The goal for structured logging is to always save all warnings and
 errors.  It is the job of the log viewer to subsample them.
 
-Internally %log calls logv which probably calls log-default-handler
-which calls log-structured-array.  log-structured-array probably calls
-*log-writer-func*, which is probably log-writer-default which calls
-one of log-writer-journald or log-writer-standard-streams.
+Internally, log-structured calls log-structured-alist, which calls
+*log-writer-func*.  That is usually log-writer-default, which calls
+whichever of log-writer-standard-streams, the syslog writer and the
+journal writer are enabled.
 
 log-writer-standard-streams writes a human-readable error message.
 

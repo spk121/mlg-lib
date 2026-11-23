@@ -21,6 +21,7 @@
   #:use-module (mlg characters)
   #:use-module (ice-9 regex)
   #:use-module (ice-9 format)
+  #:use-module (rnrs bytevectors)
   #:use-module (mlg assert)
   #:use-module (mlg logging)
   #:export (string-base-length
@@ -61,6 +62,12 @@ is CHAR."
    ""
    str))
 
+(define (ascii-digit-value c)
+  "If C is one of the characters '0' through '9', return its value.
+Otherwise return #f."
+  (and (char<=? #\0 c #\9)
+       (- (char->integer c) (char->integer #\0))))
+
 (define (string-get-first-digit str)
   "Returns an integer from zero to nine which indicates
 the first character '0' through '9' found in the string.
@@ -71,10 +78,8 @@ it returns #f."
       (if (= i len)
           #f
           ;; else
-          (let ((x (char->numeric-value (string-ref str i))))
-            (if x
-                x
-                (loop (1+ i))))))))
+          (or (ascii-digit-value (string-ref str i))
+              (loop (1+ i)))))))
 
 (define (string-ref-safe str i)
   "Returns the nth character in a string, or #\null if there is no
@@ -110,10 +115,10 @@ in String with ReplacementString, handling any escape sequences."
             ;; literal backslash.  We're done.
             (string-append rstr "\\"))
 
-           ((char->numeric-value c2)
+           ((ascii-digit-value c2)
             ;; Backslash + digit means we're going to include
             ;; the Nth submatch here, then keep looping.
-            (let ((n (char->numeric-value c2)))
+            (let ((n (ascii-digit-value c2)))
               (loop (+ 2 j)
                     (string-append
                      rstr
@@ -504,17 +509,15 @@ returns #f."
         (- i-start 1))))
 
 (define (string-compute-x-cell-list-from-string str tabsize)
-  ;;(format #t "In string-compute-x-cell-list-from-string ~S ~S ~%" str tabsize)
-  (let loop ([pp 0] [lst '()] [str str])
-    (cond
-     [(not (= 0 (string-length str)))
-      (loop (+ pp (char-count-cells (string-ref str 0) pp tabsize))
-            (append lst (list pp))
-            (substring str 1))]
-     [else
-      ;; return list
-       ;;(format #t "Exiting string-compute-x-cell-list-from-string = ~a~%" (append lst (list pp)))
-       (append lst (list pp))])))
+  "Return a list of the starting cell of each character in STR, followed
+by the cell just after the end of the string."
+  (let ([len (string-length str)])
+    (let loop ([i 0] [pp 0] [lst '()])
+      (if (< i len)
+          (loop (1+ i)
+                (+ pp (char-count-cells (string-ref str i) pp tabsize))
+                (cons pp lst))
+          (reverse (cons pp lst))))))
 
 (define (string-cell-length str tabsize)
   "Returns the number of cells that the string occupies."
@@ -652,5 +655,30 @@ Maps the procedure F of the elements of a list of strings,
 appending the results together as a single string."
   (apply string-append (map f lst)))
 
-(define (strings-load-extension)
-  (load-extension "libmlg" "init_strings_lib"))
+;; There are many versions of this algorithm out in the public
+;; domain.  It claims to implement the CCITT X.25 version of CRC-16.
+(define (string-crc16 str)
+  "Compute a 16-bit CRC of the UTF-8 encoding of the string STR, using
+the CCITT X.25 polynomial.  The two bytes of the result are swapped, as
+in the original C version of this procedure."
+  (assert (string? str))
+  (let* ((bv (string->utf8 str))
+         (len (bytevector-length bv))
+         (crc (let loop ((i 0) (crc #xffff))
+                (if (= i len)
+                    crc
+                    (loop (1+ i)
+                          (let bitloop ((bit 0)
+                                        (data (bytevector-u8-ref bv i))
+                                        (crc crc))
+                            (if (= bit 8)
+                                crc
+                                (bitloop (1+ bit)
+                                         (ash data -1)
+                                         (if (logtest 1 (logxor crc data))
+                                             (logxor (ash crc -1) #x8408)
+                                             (ash crc -1)))))))))
+         (inv (logand #xffff (lognot crc))))
+    ;; Swap the bytes.
+    (logior (ash (logand inv #xff) 8)
+            (ash inv -8))))

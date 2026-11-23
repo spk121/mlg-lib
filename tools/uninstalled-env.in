@@ -4,7 +4,7 @@
 
 # This script arranges for the environment to support running Guile
 # from the build tree.  The following env vars are modified (but not
-# clobbered): GUILE_LOAD_PATH, LTDL_LIBRARY_PATH, and PATH.
+# clobbered): GUILE_LOAD_PATH, GUILE_LOAD_COMPILED_PATH, and PATH.
 
 # Example: uninstalled-env guile -c '(display "hello\n")'
 # Example: ../../uninstalled-env ./guile-test-foo
@@ -60,22 +60,6 @@ do
 done
 export GUILE_LOAD_COMPILED_PATH
 
-# handle LTDL_LIBRARY_PATH (no clobber)
-subdirs_with_ltlibs="."       # maintain me
-for dir in $subdirs_with_ltlibs ; do
-    if test -z "$LTDL_LIBRARY_PATH"; then
-        LTDL_LIBRARY_PATH="${top_builddir}/${dir}"
-    else
-        LTDL_LIBRARY_PATH="${top_builddir}/${dir}:${LTDL_LIBRARY_PATH}"
-    fi
-    if test -z "$DYLD_LIBRARY_PATH"; then
-        DYLD_LIBRARY_PATH="${top_builddir}/${dir}/.libs"
-    else
-        DYLD_LIBRARY_PATH="${top_builddir}/${dir}/.libs:${DYLD_LIBRARY_PATH}"
-    fi
-done
-export LTDL_LIBRARY_PATH
-export DYLD_LIBRARY_PATH
 
 
 # handle PATH (no clobber)

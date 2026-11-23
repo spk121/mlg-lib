@@ -4,23 +4,6 @@ AM_DISTCHECK_CONFIGURE_FLAGS = --with-gnu-filesystem-hierarchy
 
 info_TEXINFOS = doc/mlg_lib.texi
 
-guileextension_LTLIBRARIES = libmlg.la
-
-AM_CFLAGS = $(GUILE_CFLAGS)
-AM_LIBS = $(GUILE_LTLIBS) -lsystemd
-AM_LDFLAGS = $(GUILE_LDFLAGS) -no-undefined -avoid-version
-
-libmlg_la_SOURCES = \
-  src/chars.c \
-  src/journal.c \
-  src/journal.h \
-  src/math.c \
-  src/math.h \
-  src/strings.c \
-  src/strings.h \
-  src/utils.c \
-  src/utils.h
-
 mlgguilesitedir = $(guilesitedir)/mlg
 ryuguilesitedir = $(guilesitedir)/ryu
 mlgguileobjectdir = $(guileobjectdir)/mlg
@@ -38,13 +21,13 @@ dist_mlgguilesite_DATA = \
  module/mlg/numval.scm \
  module/mlg/port.scm \
  module/mlg/procedure.scm \
+ module/mlg/regex.scm \
  module/mlg/strings.scm \
  module/mlg/time.scm \
  module/mlg/typechecking.scm \
  module/mlg/utils.scm
 
 # nodist_data_DATA = \
-#  module/mlg/regex.scm \
 #  module/mlg/spreadsheet.scm \
 #  module/mlg/state.scm
 
@@ -69,11 +52,8 @@ GUILEC_FLAGS = \
 
 .scm.go:
 	GUILE_AUTO_COMPILE=0 \
-	LTDL_LIBRARY_PATH=$(abs_builddir)/.libs \
 	$(GUILE_TOOLS) compile --target="$(host)" $(GUILEC_FLAGS) \
 	-o "$@" "$<"
-
-$(mlgguileobject_DATA) $(ryuguileobject_DATA): $(guileextension_LTLIBRARIES)
 
 CLEANFILES = \
   $(mlgguileobject_DATA) \
@@ -89,7 +69,12 @@ TESTS = \
   tests/t-mlg-characters.scm \
   tests/t-mlg-lists.scm \
   tests/t-mlg-math.scm \
-  tests/t-mlg-ports.scm
+  tests/t-mlg-ports.scm \
+  tests/t-mlg-regex.scm \
+  tests/t-mlg-journal.scm \
+  tests/t-mlg-utils.scm \
+  tests/t-ryu-core.scm \
+  tests/t-ryu-printf.scm
 
 TEST_EXTENSIONS = .scm
 

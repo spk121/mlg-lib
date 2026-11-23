@@ -75,19 +75,28 @@
               (define (frame-procedure-name F)
                 (procedure-name (frame-procedure F)))))
 
+;; The file name and line number of a macro call, taken from the call
+;; site's source properties.
+(eval-when (expand load eval)
+  (define (call-site-file x)
+    (let* ((src (syntax-source x))
+           (file (and src (assq-ref src 'filename))))
+      (if file (basename file) "(unknown file)")))
+  (define (call-site-line x)
+    ;; Guile counts lines from zero; messages count from one.
+    (let* ((src (syntax-source x))
+           (line (and src (assq-ref src 'line))))
+      (if line (1+ line) -1))))
+
 (define-syntax __FILE__
-  (syntax-rules ()
-    ((_)
-     (if (assv-ref (current-source-location) 'filename)
-         (basename (assv-ref (current-source-location) 'filename))
-         ;; else
-         "(unknown file)"))))
+  (lambda (x)
+    (syntax-case x ()
+      ((_) (datum->syntax x (call-site-file x))))))
 
 (define-syntax __LINE__
-  (syntax-rules ()
-    ((_)
-     (or (assv-ref (current-source-location) 'line)
-         -1))))
+  (lambda (x)
+    (syntax-case x ()
+      ((_) (datum->syntax x (call-site-line x))))))
 
 (define-syntax __FUNC__
   (syntax-rules ()
@@ -110,14 +119,6 @@
           (else
            "(unknown func)")))))))
 
-(define-syntax STRLOC
-  (syntax-rules ()
-    ((_)
-     (let ((loc (assv-ref (current-source-location) 'line)))
-       (if loc
-           (number->string loc)
-           "(unknown line)")))))
-
 (define-syntax __LOCALS__
   (syntax-rules ()
     ((_)
@@ -133,7 +134,7 @@
                                 (print-locals frame
                                               #:width 160
                                               #:per-line-prefix "**   ")))))
-           (if (and (not name) (< i (vector-length stk)))
+           (if (and (not name) (< (1+ i) (vector-length stk)))
                (loop (1+ i))
                ;; else
                out)))))))
@@ -209,137 +210,101 @@ out)))))))
 (define (get-log-domain)
   LOG_DOMAIN)
 
+;; The logging macros below all log a message with the file, line and
+;; function of the place they are called from.
+
+(define-syntax log-at-call-site
+  ;; (log-at-call-site FORM level arg ...) logs from the location of
+  ;; FORM, which is the original macro call.
+  (lambda (x)
+    (syntax-case x ()
+      ((_ form level arg ...)
+       (with-syntax ((file (datum->syntax #'form (call-site-file #'form)))
+                     (line (datum->syntax #'form
+                                          (number->string
+                                           (call-site-line #'form)))))
+         #'(log-structured LOG_DOMAIN level
+                           "CODE_FILE" file
+                           "CODE_LINE" line
+                           "CODE_FUNC" (__FUNC__)
+                           arg ...))))))
+
 ;; gmessage.h: 246: G_DEBUG_HERE
 (define-syntax log-debug-locals
-  (syntax-rules ()
-    ((_ ...)
-     (log-structured LOG_DOMAIN LOG_LEVEL_DEBUG
-                     "CODE_FILE" (__FILE__)
-                     "CODE_LINE" (STRLOC)
-                     "CODE_FUNC" (__FUNC__)
-                     "MESSAGE" (string->format-escaped-string (__LOCALS__))))))
+  (lambda (x)
+    (syntax-case x ()
+      ((_ . args)
+       #`(log-at-call-site #,x LOG_LEVEL_DEBUG
+                           "MESSAGE"
+                           (string->format-escaped-string (__LOCALS__)))))))
 
 (define-syntax log-debug-time
+  (lambda (x)
+    (syntax-case x ()
+      ((_)
+       #`(log-at-call-site #,x LOG_LEVEL_DEBUG
+                           "MESSAGE" "Time is ~6,5f"
+                           (* 1e-6 (- (monotonic-time) *log-start-time*)))))))
+
+(define-syntax define-log-macro
   (syntax-rules ()
-    ((_)
-     (log-structured LOG_DOMAIN LOG_LEVEL_DEBUG
-                     "CODE_FILE" (__FILE__)
-                     "CODE_LINE" (STRLOC)
-                     "CODE_FUNC" (__FUNC__)
-                     "MESSAGE" "Time is ~6,5f"
-                     (* 1e-6 (- (monotonic-time) *log-start-time*))))))
+    ((_ name level)
+     (define-syntax name
+       (lambda (x)
+         (syntax-case x ()
+           ((_ msg (... ...))
+            #`(log-at-call-site #,x level "MESSAGE" msg (... ...)))))))))
 
 ;; gmessages.h: 285: g_error
-(define-syntax log-error
-  (syntax-rules ()
-    ((_ msg ...)
-     (log-structured LOG_DOMAIN LOG_LEVEL_ERROR
-                     "CODE_FILE" (__FILE__)
-                     "CODE_LINE" (STRLOC)
-                     "CODE_FUNC" (__FUNC__)
-                     "MESSAGE" msg ...))))
-
+(define-log-macro log-error LOG_LEVEL_ERROR)
 ;; gmessage.h: 293: g_message
-(define-syntax log-message
-  (syntax-rules ()
-    ((_ msg ...)
-     (log-structured LOG_DOMAIN LOG_LEVEL_MESSAGE
-                     "CODE_FILE" (__FILE__)
-                     "CODE_LINE" (STRLOC)
-                     "CODE_FUNC" (__FUNC__)
-                     "MESSAGE" msg ...))))
-
+(define-log-macro log-message LOG_LEVEL_MESSAGE)
 ;; gmessage.h: 298: g_critical
-(define-syntax log-critical
-  (syntax-rules ()
-    ((_ msg ...)
-     (log-structured LOG_DOMAIN LOG_LEVEL_CRITICAL
-                     "CODE_FILE" (__FILE__)
-                     "CODE_LINE" (STRLOC)
-                     "CODE_FUNC" (__FUNC__)
-                     "MESSAGE" msg ...))))
-
+(define-log-macro log-critical LOG_LEVEL_CRITICAL)
 ;; gmessage.h: 303: g_warning
-(define-syntax log-warning
-  (syntax-rules ()
-    ((_ msg ...)
-     (log-structured LOG_DOMAIN LOG_LEVEL_WARNING
-                     "CODE_FILE" (__FILE__)
-                     "CODE_LINE" (STRLOC)
-                     "CODE_FUNC" (__FUNC__)
-                     "MESSAGE" msg ...))))
-
+(define-log-macro log-warning LOG_LEVEL_WARNING)
 ;; gmessage.h: 308: g_info
-(define-syntax log-info
-  (syntax-rules ()
-    ((_ msg ...)
-     (log-structured LOG_DOMAIN LOG_LEVEL_INFO
-                     "CODE_FILE" (__FILE__)
-                     "CODE_LINE" (STRLOC)
-                     "CODE_FUNC" (__FUNC__)
-                     "MESSAGE" msg ...))))
-
+(define-log-macro log-info LOG_LEVEL_INFO)
 ;; gmessage.h: 313: g_debug
-(define-syntax log-debug
-  (syntax-rules ()
-    ((_ msg ...)
-     (log-structured LOG_DOMAIN LOG_LEVEL_DEBUG
-                     "CODE_FILE" (__FILE__)
-                     "CODE_LINE" (STRLOC)
-                     "CODE_FUNC" (__FUNC__)
-                     "MESSAGE" msg ...))))
+(define-log-macro log-debug LOG_LEVEL_DEBUG)
 
 ;; gmessage.h: 491: g_warn_if_reached
-
 (define-syntax warn-if-reached
-  (syntax-rules ()
-    ((_)
-     (log-structured LOG_DOMAIN LOG_LEVEL_CRITICAL
-                     "CODE_FILE" (__FILE__)
-                     "CODE_LINE" (STRLOC)
-                     "CODE_FUNC" (__FUNC__)
-                     "MESSAGE" "code should not be reached"))))
+  (lambda (x)
+    (syntax-case x ()
+      ((_)
+       #`(log-at-call-site #,x LOG_LEVEL_CRITICAL
+                           "MESSAGE" "code should not be reached")))))
 
 (define-syntax warn-if-used
-  (syntax-rules ()
-    ((_ val)
-     (begin
-       (log-structured LOG_DOMAIN LOG_LEVEL_CRITICAL
-                       "CODE_FILE" (__FILE__)
-                       "CODE_LINE" (STRLOC)
-                       "CODE_FUNC" (__FUNC__)
-                       "MESSAGE" "value '~a' should not be used"
-                       val)
-       val))))
+  (lambda (x)
+    (syntax-case x ()
+      ((_ val)
+       #`(let ((v val))
+           (log-at-call-site #,x LOG_LEVEL_CRITICAL
+                             "MESSAGE" "value '~a' should not be used" v)
+           v)))))
 
 (define-syntax warn-if-false
-  (syntax-rules ()
-    ((_ expr)
-     (let ((ret expr))
-       (or ret
-           (begin
-             (log-structured LOG_DOMAIN LOG_LEVEL_CRITICAL
-                             "CODE_FILE" (__FILE__)
-                             "CODE_LINE" (STRLOC)
-                             "CODE_FUNC" (__FUNC__)
-                             "MESSAGE" "'~a' is false"
-                             (quote expr))
-             #f))))))
+  (lambda (x)
+    (syntax-case x ()
+      ((_ expr)
+       #`(or expr
+             (begin
+               (log-at-call-site #,x LOG_LEVEL_CRITICAL
+                                 "MESSAGE" "'~a' is false" 'expr)
+               #f))))))
 
 (define-syntax warn-val-if-false
-  (syntax-rules ()
-    ((_ expr val)
-     (let ((ret expr))
-       (or ret
-           (begin
-             (log-structured LOG_DOMAIN LOG_LEVEL_CRITICAL
-                             "CODE_FILE" (__FILE__)
-                             "CODE_LINE" (STRLOC)
-                             "CODE_FUNC" (__FUNC__)
-                             "MESSAGE" "'~a' is false. '~a'='~a'"
-                             (quote expr) (quote val) val)
-             #f))))))
-
+  (lambda (x)
+    (syntax-case x ()
+      ((_ expr val)
+       #`(or expr
+             (begin
+               (log-at-call-site #,x LOG_LEVEL_CRITICAL
+                                 "MESSAGE" "'~a' is false. '~a'='~a'"
+                                 'expr 'val val)
+               #f))))))
 
 ;; gmessages.h: 576: g_return_if_fail
 
@@ -350,18 +315,13 @@ out)))))))
 ;; gmessage.h: 603: g_return_val_if_reached
 
 (define-syntax log-debug-pk
-  (syntax-rules ()
-    ((_ expr)
-     (let ((ret expr))
-       (log-structured LOG_DOMAIN LOG_LEVEL_DEBUG
-                       "CODE_FILE" (__FILE__)
-                       "CODE_LINE" (STRLOC)
-                       "CODE_FUNC" (__FUNC__)
-                       "MESSAGE" "'~s' is '~s'"
-                       (quote expr) ret)
-       ret))))
-
-
+  (lambda (x)
+    (syntax-case x ()
+      ((_ expr)
+       #`(let ((ret expr))
+           (log-at-call-site #,x LOG_LEVEL_DEBUG
+                             "MESSAGE" "'~s' is '~s'" 'expr ret)
+           ret)))))
 
 ;; gmessages
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -387,10 +347,13 @@ out)))))))
 
 ;; 523: aka _g_log_abort
 (define (%log-abort breakpoint?)
+  "Terminate the program after a fatal log message.  If BREAKPOINT? is
+true and the program is interactive, first enter the debugging REPL,
+which is as close as Guile gets to GLib's G_BREAKPOINT."
   (assert-type boolean breakpoint?)
-  (if breakpoint?
-      (breakpoint 'log-abort)
-      (exit 1)))
+  (when (and breakpoint? (isatty? (current-input-port)))
+    (breakpoint 'log-abort))
+  (exit 1))
 
 (define (log-set-default-writer writer_func)
   "Set the function to be used for logging.  WRITER_FUNC is a procedure
@@ -437,7 +400,7 @@ when logging to the standard streams."
 ;; 1151: mklevel_prefix
 (define (mklevel-prefix log-level use-color?)
   (string-append
-   (log-level->color log-level use-color?))
+   (log-level->color log-level use-color?)
    (cond
     ((eqv? (logand log-level LOG_LEVEL_MASK) LOG_LEVEL_ERROR)
      "ERROR")
@@ -461,7 +424,7 @@ when logging to the standard streams."
        "")
    (if (logtest log-level ALERT_LEVELS)
        " **"
-       ""))
+       "")))
 
 ;; 1150: extracted fro mmklevel_prefix
 (define (log-level->port log-level)
@@ -512,6 +475,11 @@ when logging to the standard streams."
 
 ;; 1665: g_log_structured
 (define (%add-fields-from-list-to-alist _output rest)
+  (if (null? rest)
+      _output
+      (%add-fields-from-nonempty-list-to-alist _output rest)))
+
+(define (%add-fields-from-nonempty-list-to-alist _output rest)
   (let loop ((key #f)
              (cur (car rest))
              (rest (cdr rest))
@@ -572,18 +540,18 @@ will be merged into a single string using (format #f param1 param2 ...)"
                             *log-writer-func*))
       (unlock-mutex *messages-lock*)
 
-      (fluid-set! *log-structured-depth* (1+ depth))
-      (when (procedure? writer-func)
-        (writer-func log-level fields-alist))
-      (let ((fport *log-file-port*))
-        (when fport
-          (display (log-writer-format-fields log-level fields-alist #f) fport)
-          (newline fport)
-          (force-output fport)))
-      (fluid-set! *log-structured-depth* depth)
+      ;; WITH-FLUIDS restores the depth even if the writer throws.
+      (with-fluids ((*log-structured-depth* (1+ depth)))
+        (when (procedure? writer-func)
+          (writer-func log-level fields-alist))
+        (let ((fport *log-file-port*))
+          (when fport
+            (display (log-writer-format-fields log-level fields-alist #f) fport)
+            (newline fport)
+            (force-output fport))))
 
       (when (logtest log-level LOG_FATAL_MASK)
-        (%log-abort (not (logand log-level LOG_FLAG_RECURSION)))))))
+        (%log-abort (not (logtest log-level LOG_FLAG_RECURSION)))))))
 
 ;; 2168: g_log_writer_format_fields
 (define (log-writer-format-fields log-level fields-alist use-color?)
@@ -673,7 +641,7 @@ will be merged into a single string using (format #f param1 param2 ...)"
           (false-if-exception (send-alist-to-journal fields-alist)))
         (when (or (logtest log-level LOG_FATAL_MASK)
                   (logtest log-level *log-always-fatal*))
-          (%log-abort (not (logand (logior log-level LOG_FLAG_FATAL) LOG_FLAG_RECURSION))))
+          (%log-abort (not (logtest log-level LOG_FLAG_RECURSION))))
         #t))))
 
 ;; 2619: _g_log_writer_fallback
@@ -703,22 +671,11 @@ the current error or output port."
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (define (log-enable-stream-output flag)
-  (when (eqv? flag #t)
-    (set! *log-stream-enabled* #t))
-  (when (eqv? flag #f)
-    (set! *log-stream-enabled* #f)))
-
-(define (log-enable-journal-output flag)
-  (when (eqv? flag #t)
-    (set! *log-journal-enabled* #t))
-  (when (eqv? flag #f)
-    (set! *log-journal-enabled* #f)))
-
-(define (log-enable-syslog-output flag)
-  (when (eqv? flag #t)
-    (set! *log-syslog-enabled* #t))
-  (when (eqv? flag #f)
-    (set! *log-syslog-enabled* #f)))
+  "Given FLAG, which is #t or #f, this enables or disables logging to the
+standard output and error ports."
+  (lock-mutex *messages-lock*)
+  (set! *log-stream-enabled* (and flag #t))
+  (unlock-mutex *messages-lock*))
 
 (define (call-with-log-file filename thunk)
   "Call THUNK, appending all log messages to FILENAME in addition to any

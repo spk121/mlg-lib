@@ -110,7 +110,7 @@ If the port returns #<eof>, this procedure returns #f."
 
 (define (peek-char-islower? port)
   "Return #t if the next character to be read in port is lower-case."
-  (%peek-char-test port isgraph?))
+  (%peek-char-test port islower?))
 
 (define (peek-char-isprint? port)
   "Return #t if the next character to be read in port is a printing character."
@@ -290,7 +290,7 @@ ANSI colors."
   "Read the next character available from PORT.  Return #t if it is
 equal to the given character.  Return #f if it does not equal the
 character, or if the port returned #<eof>."
-  (let ((c (peek-char port)))
+  (let ((c (read-char port)))
     (if (eof-object? c)
         #f
         ;; else
@@ -436,7 +436,7 @@ Will return the integer, or 0 if no integer was found, or EOF"
                          (+ 10 (- (char->integer c) (char->integer #\a))))
                         (else
                          #f))))
-              (if (not val)
+              (if (or (not val) (>= val base))
                   (begin
                     (unread-string txt port)
                     0)
@@ -491,7 +491,7 @@ reason why no regex string was found."
      ((eof-object? (peek-char port))
       ;; Only 1 char available.  Not a regex.
       (set! *read-regex-string-err* "only one char available")
-      (unread-char delimiter)
+      (unread-char delimiter port)
       #f)
 
      ((char=? (peek-char port) delimiter)

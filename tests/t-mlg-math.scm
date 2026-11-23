@@ -1,4 +1,5 @@
 (use-modules (srfi srfi-64)
+             (srfi srfi-1)
              (mlg math))
 
 (test-begin "t-mlg-math")
@@ -153,4 +154,37 @@
   '((1 4) (1 3)) (array-shape (transpose-2d-f32-array (make-2d-f32-array 3 4))))
 
 ;; Finish the testsuite, and report results.
+
+;; real->integer, a pure Scheme version of the C function
+(test-equal "real->integer truncates positive" 3 (real->integer 3.7))
+(test-equal "real->integer truncates negative" -3 (real->integer -3.7))
+(test-equal "real->integer exact rational" -3 (real->integer -7/2))
+(test-equal "real->integer is exact" #t (exact? (real->integer 2.0)))
+(test-equal "real->integer largest fixnum"
+  most-positive-fixnum (real->integer most-positive-fixnum))
+(test-error "real->integer too large" 'out-of-range (real->integer 1e19))
+(test-error "real->integer NaN" 'out-of-range (real->integer +nan.0))
+(test-error "real->integer infinity" 'out-of-range (real->integer -inf.0))
+(test-error "real->integer non-number" 'wrong-type-arg (real->integer "1"))
+
+;; Further fixes
+(test-equal "binomial-coefficient negative k returns 0" 0 (binomial-coefficient 5 -1))
+(test-assert "quadratic-roots double root at zero"
+  (let ((r (quadratic-roots 1 0 0))) (and (= 2 (length r)) (every zero? r))))
+(test-equal "quadratic-roots x^2 - 3x + 2" '(2.0 1.0) (quadratic-roots 1 -3 2))
+(test-equal "monotonic-list-pos-to-coord example" '(1 2)
+  (monotonic-list-pos-to-coord (list 5 10 15) 7))
+(test-equal "monotonic-list-pos-to-coord first interval" '(0 3)
+  (monotonic-list-pos-to-coord (list 5 10 15) 3))
+(test-equal "monotonic-list-pos-to-coord beyond the end" #f
+  (monotonic-list-pos-to-coord (list 5 10 15) 15))
+(test-equal "array-sum-product-of-slice-pairs columns" (+ (* 1 2) (* 3 4))
+  (array-sum-product-of-slice-pairs #2((1 2) (3 4)) 1 0 1))
+(test-equal "array-sum-product-of-slice-pairs rows" (+ (* 1 3) (* 2 4))
+  (array-sum-product-of-slice-pairs #2((1 2) (3 4)) 0 0 1))
+(test-assert "dct round trip"
+  (let* ((f (f64vector 1 2 3 4 5 6 7 8))
+         (g (dct-f64-inverse-8-point (dct-f64-forward-8-point f))))
+    (every (lambda (i) (< (abs (- (f64vector-ref f i) (f64vector-ref g i))) 1e-12))
+           (iota 8))))
 (test-end "t-mlg-math")
