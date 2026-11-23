@@ -185,16 +185,28 @@ IDX1."
                           ;; else
                           (apply array-ref (append (list arr) indices))))))
 
-(define (array-sum-product-of-slices arr n idx1 idx2)
+(define (array-sum-product-of-slice-pairs arr n idx1 idx2)
   "Given an array ARR, consider two array slices, where the Nth
 array index is equal to IDX1 and IDX2 respectively.  Compute the sum
-of the the products of the elements of two array slices."
-  ;; FIXME: not implementsed
-  (error 'not-implemented))
+of the the products of the corresponding elements of the two array
+slices.  For a matrix and N = 1, this is the dot product of columns
+IDX1 and IDX2."
+  (let ((sum 0))
+    (array-index-map! (apply make-array #f (array-shape arr))
+                      (lambda indices
+                        (when (= idx1 (list-ref indices n))
+                          (let ((indices2 (list-copy indices)))
+                            (list-set! indices2 n idx2)
+                            (set! sum
+                                  (+ sum
+                                     (* (apply array-ref arr indices)
+                                        (apply array-ref arr indices2))))))
+                        #f))
+    sum))
 
 (define (binomial-coefficient n k)
   "Computes the binomial coefficient 'n choose k'."
-  (if (> k n)
+  (if (or (> k n) (< k 0))
       0
       (if (or (= k 0) (= k n))
           1
@@ -235,7 +247,7 @@ of the the products of the elements of two array slices."
 ;; The cosine basis function scale factors for the DCT.
 (define CU_0 (/ 1.0 (sqrt 2.0)))
 (define CU_N 1.0)
-(define π 3.141592654)
+(define π (* 4 (atan 1.0)))
 
 (define (dct-f64-forward-8-point f)
   "Given a uniform f64vector of 8 numbers, this procedure returns a
@@ -511,14 +523,20 @@ The first element is
 The second element is the difference between x and the lower limit.
 
 Thus ((list 5 10 15) 7) => (1 2)
- since x1 <= 7 and 7 - x1 = 2"
+ since x1 <= 7 and 7 - x1 = 2
+
+If X is negative, or not less than the last element of LST, this
+returns #f."
   (let loop ((j 0)
              (prev 0)
-             (cur (car lst))
-             (rest (cdr lst)))
-    (if (and (<= prev x) (< x cur))
-        (list j (- x prev))
-        (loop (1+ j) cur (car rest) (cdr rest)))))
+             (lst lst))
+    (cond
+     ((or (null? lst) (< x prev))
+      #f)
+     ((< x (car lst))
+      (list j (- x prev)))
+     (else
+      (loop (1+ j) (car lst) (cdr lst))))))
 
 (define (pythag x y)
   (sqrt (+ (* x x) (* y y))))
@@ -565,7 +583,10 @@ direction sine and cosine."
                       (sqrt (- (* b b) (* 4 a c)))
                       (- (sqrt (- (* b b) (* 4 a c))))))
              (q (* -0.5 (+ b det))))
-        (list (/ q a) (/ c q)))))
+        (if (zero? q)
+            ;; Then b and c are zero, so zero is a double root.
+            (list q q)
+            (list (/ q a) (/ c q))))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; 8.3.2 Numerical Differentiation
