@@ -106,20 +106,20 @@
 	    cassert
 	    assert
 
-	    ;; 7.3.5.1 The cacos functions
-	    cacos
+	    ;; 7.3.5 Trigonometric functions
+	    cacos casin catan ccos csin ctan
 
-	    ;; 7.3.5.2 The casin function
-	    casin
+	    ;; 7.3.6 Hyperbolic functions
+	    cacosh casinh catanh ccosh csinh ctanh
 
-	    ;; 7.3.5.3 The catan function
-	    catan
+	    ;; 7.3.7 Exponential and logarithmic functions
+	    cexp clog
 
-	    ;; 7.3.5.4 The ccos function
-	    ccos
+	    ;; 7.3.8 Power and absolute-value functions
+	    cabs cpow csqrt
 
-	    ;; 7.3.5.5 The csin functions
-	    csin
+	    ;; 7.3.9 Manipulation functions
+	    carg cimag CMPLX conj cproj creal
 
 	    ;; 7.4 Character handling
 	    locale-uint8->char
@@ -165,7 +165,8 @@
 	    isspace?
 
 	    ;; 7.4.1.11 The isupper function
-	    cissupper
+	    cisupper
+	    cissupper			; misspelled, kept for compatibility
 	    isupper?
 
 	    ;; 7.4.1.12 The isxdigit function
@@ -189,6 +190,8 @@
 	    ;; 7.8.2.3 The strtoimax and strtoumax functions
 	    strtoimax
 	    strtoimax-idx
+	    strtoumax
+	    strtoumax-idx
 
 	    ;; 7.10 Sizes of integer types <limits.h>
 	    INT_MIN
@@ -213,6 +216,10 @@
 	    cisnan
 	    isnan?
 
+	    ;; 7.12.3.5 The isnormal macro
+	    cisnormal
+	    isnormal?
+
 	    ;; 7.12.3.6 The signbit macro
 	    csignbit
 	    signbit
@@ -235,9 +242,15 @@
 	    ;; 7.12.11.2 The nan functions
 	    cnan
 
+	    ;; 7.12.11 Manipulation functions
+	    nextafter
+
 	    ;; 7.12.14.5 The islessgreater macro
 	    cislessgreater
 	    islessgreater
+
+	    ;; 7.14.1.1 The signal function
+	    signal
 
 	    ;; 7.18 Boolean type and values
 	    ctrue
@@ -274,22 +287,18 @@
 	    ;; 7.21.5.3 The fopen function
 	    fopen
 
-	    ;; <complex.h>
-	    CMPLX
-	    creal
-	    cimag
-	    cabs
-	    conj
-	    cexp
-	    clog
-	    cpow
-	    csqrt
-	    csin ccos ctan
-	    csinh ccosh ctanh
-	    casinh cacosh catanh
+	    ;; 7.21.6 Formatted input/output functions
+	    snprintf
+	    sprintf
+
+	    ;; 7.21.7 Character input/output functions
+	    fgetc
+	    fgets
+
+	    ;; 7.21.9.5 The rewind function
+	    rewind
 
 	    ;; <math.h>
-	    frexp
 	    ilogb
 	    ldexp
 	    log1p
@@ -330,12 +339,17 @@
 	    strtod
 	    strtol
 	    strtol-idx
+	    strtoul
+	    strtoul-idx
 	    strtof
 	    rand
 	    srand
+	    calloc
 	    malloc
 	    realloc
 	    abort
+	    div
+	    mblen
 
 
 	    ;; <stdnoreturn.h>
@@ -350,18 +364,23 @@
 	    strncmp
 	    strcoll
 	    strchr
+	    strchr-idx
 	    strrchr
+	    strrchr-idx
 	    strspn
 	    strcspn
 	    strpbrk
+	    strpbrk-idx
 	    strstr
+	    strstr-idx
 	    strtok
 	    memchr
+	    memchr-idx
 	    memcmp
 	    memset
 	    memcpy
 	    memmove
-	    strerror
+	    ;; STRERROR is in core Guile.
 
 	    ;; <tgmath.h>
 
@@ -374,6 +393,9 @@
 	    mbstowcs
 	    wcstombs
 
+	    ;; <wctype.h>
+	    iswctype
+	    wctype
 	    ))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -648,45 +670,50 @@ required single characters replaced with trigraph sequences."
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; 6.5.4 Cast operators
 
+;; A cast to an unsigned type of N bits reduces the value modulo 2^N.
+;; A cast to a signed type of N bits does the same, then maps the upper
+;; half of the range to negative values (two's complement).
+
+(define (wrap-unsigned x bits)
+  (logand x (1- (ash 1 bits))))
+
+(define (wrap-signed x bits)
+  (let ((u (wrap-unsigned x bits)))
+    (if (logbit? (1- bits) u)
+	(- u (ash 1 bits))
+	u)))
+
 (define (cast-int8-to-uint8 x)
-  (if (< x 0)
-      (- #x100 (logand #x7f (abs x)))
-      (logand #x7F x)))
+  "Convert X to an 8-bit unsigned integer, as a C cast would."
+  (wrap-unsigned x 8))
 
 (define (cast-uint8-to-int8 x)
-  (if (<= x #x7f)
-      x
-      (- (- #x100 (logand x #xff)))))
+  "Convert X to an 8-bit signed integer, as a C cast would."
+  (wrap-signed x 8))
 
 (define (cast-int16-to-uint16 x)
-  (if (< x 0)
-      (- #x10000 (logand #x7fff (abs x)))
-      (logand #x7FFF x)))
+  "Convert X to a 16-bit unsigned integer, as a C cast would."
+  (wrap-unsigned x 16))
 
 (define (cast-uint16-to-int16 x)
-  (if (<= x #x7fff)
-      x
-      (- (- #x10000 (logand x #xffff)))))
+  "Convert X to a 16-bit signed integer, as a C cast would."
+  (wrap-signed x 16))
 
 (define (cast-int32-to-uint32 x)
-  (if (< x 0)
-      (- #x100000000 (logand #x7fffffff (abs x)))
-      (logand #x7FFFFFFF x)))
+  "Convert X to a 32-bit unsigned integer, as a C cast would."
+  (wrap-unsigned x 32))
 
 (define (cast-uint32-to-int32 x)
-  (if (<= x #x7fffffff)
-      x
-      (- (- #x100000000 (logand x #xffffffff)))))
+  "Convert X to a 32-bit signed integer, as a C cast would."
+  (wrap-signed x 32))
 
 (define (cast-int64-to-uint64 x)
-  (if (< x 0)
-      (- #x10000000000000000 (logand #x7fffffffffffffff (abs x)))
-      (logand #x7FFFFFFFFFFFFFFF x)))
+  "Convert X to a 64-bit unsigned integer, as a C cast would."
+  (wrap-unsigned x 64))
 
 (define (cast-uint64-to-int64 x)
-  (if (<= x #x7fffffffffffffff)
-      x
-      (- (- #x10000000000000000 (logand x #xffffffffffffffff)))))
+  "Convert X to a 64-bit signed integer, as a C cast would."
+  (wrap-signed x 64))
 
 ;; No close analog in Guile.
 
@@ -726,10 +753,12 @@ any non-integer rational operands to real numbers."
       (/ (exact->inexact a) (exact->inexact b))))))
 
 (define (c% _a _b)
-  "Compute the modulo of two values, either numbers or pointers."
+  "Compute the remainder of two values, either numbers or pointers.
+As in C, the result has the sign of the dividend, so that
+(c+ (c* (c/ a b) b) (c% a b)) equals A."
   (let ((a (if (pointer? _a) (pointer-address _a) _a))
 	(b (if (pointer? _b) (pointer-address _b) _b)))
-    (modulo a b)))
+    (remainder a b)))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; 6.5.6 Additive operators
@@ -868,11 +897,8 @@ are numerically equal, or zero otherwise, whilst promoting any
 non-integer rational operands to real numbers."
   (let ((a (if (pointer? _a) (pointer-address _a) _a))
 	(b (if (pointer? _b) (pointer-address _b) _b)))
-    (cond
-     ((and (exact-integer? a) (exact-integer? b))
-      (if (equal? a b) 1 0))
-     (else
-      (if (equal? (exact->inexact a) (exact->inexact b)) 1 0)))))
+    ;; Use numeric equality, so that 0.0 == -0.0 and NaN != NaN.
+    (if (= a b) 1 0)))
 
 (define (== _a _b)
   (equal? _a _b))
@@ -883,11 +909,8 @@ are numerically equal, or one otherwise, whilst promoting any
 non-integer rational operands to real numbers."
   (let ((a (if (pointer? _a) (pointer-address _a) _a))
 	(b (if (pointer? _b) (pointer-address _b) _b)))
-    (cond
-     ((and (exact-integer? a) (exact-integer? b))
-      (if (equal? a b) 0 1))
-     (else
-      (if (equal? (exact->inexact a) (exact->inexact b)) 0 1)))))
+    ;; Use numeric equality, so that 0.0 == -0.0 and NaN != NaN.
+    (if (= a b) 0 1)))
 
 (define (!= _a _b)
   (not (equal? _a _b)))
@@ -896,7 +919,7 @@ non-integer rational operands to real numbers."
 ;; 6.5.10 Bitwise AND operator
 
 ;; Bitwise AND operator - called LOGAND in core Guile.
-(define (cbitand a b)
+(define (bitand a b)
   "Compute the bitwise AND of two integers."
   (logand a b))
 
@@ -904,7 +927,7 @@ non-integer rational operands to real numbers."
 ;; 6.5.11 Bitwise exclusive OR operator
 
 ;; Bitwise exclusive OR operator - called LOGXOR in core Guile.
-(define (cbitxor a b)
+(define (bitxor a b)
   "Compute the bitwise exclusive OR of two operands."
   (logxor a b))
 
@@ -914,7 +937,7 @@ non-integer rational operands to real numbers."
 ;; Bitwise inclusive OR operator - called LOGIOR in core Guile. But
 ;; the vertical bar has syntactical meaning in Guile, so here it is
 ;; slash-bar.
-(define (cbitor a b)
+(define (bitor a b)
   "Compute the bitwise OR of two integers"
   (logior a b))
 
@@ -923,12 +946,20 @@ non-integer rational operands to real numbers."
 
 ;; Converting logical operations from C to Guile must handle how C
 ;; uses non-zero and zero integers for true and false, whilst Guile
-;; has a boolean type.
+;; has a boolean type.  Here we create a hybrid between C and Guile
+;; where #f, numeric zero, and the null pointer are false.
+
+(define (c-true? x)
+  (cond
+   ((not x) #f)
+   ((number? x) (not (zero? x)))
+   ((pointer? x) (not (null-pointer? x)))
+   (else #t)))
 
 (define (c-logical-and a b)
-  "Compute the logical AND of two scalar operands, returning 1 if operands
-compare unequal to zero, and zero otherwise."
-  (if (and (not (zero? a)) (not (zero? b)))
+  "Compute the logical AND of two scalar operands, returning 1 if both
+operands compare unequal to zero, and zero otherwise."
+  (if (and (c-true? a) (c-true? b))
       1
       0))
 
@@ -941,7 +972,7 @@ compare unequal to zero, and zero otherwise."
 (define (c-logical-or a b)
   "Compute the logical or of two scalar operands, returning 1 if either operand
 compares unequal to zero, and zero otherwise."
-  (if (or (not (zero? a)) (not (zero? b)))
+  (if (or (c-true? a) (c-true? b))
       1
       0))
 
@@ -957,7 +988,7 @@ compares unequal to zero, and zero otherwise."
 (define (c?: test on-success on-failure)
   "If test is unequal to zero, return on-success.
 Else return on-failure."
-  (if (not (zero? test))
+  (if (c-true? test)
       on-success
       on-failure))
 
@@ -1122,39 +1153,46 @@ Else return on-failure."
   (lambda (x)
     (syntax-case x ()
       ((for (init-var init-val) cond iterator body ...)
-       #`(let ((break-tag (make-prompt-tag "break"))
-               (continue-tag (make-prompt-tag "continue")))
-           (call-with-prompt
-               break-tag
-             (lambda ()
-               (define-syntax #,(datum->syntax #'for 'break)
-                 (lambda (x)
-                   (syntax-case x ()
-                     ((_ arg (... ...))
-                      #'(abort-to-prompt break-tag arg (... ...)))
-                     (_
-                      #'(lambda args
-                          (apply abort-to-prompt break-tag args))))))
-               (let lp ()
-                 (call-with-prompt
-                     continue-tag
-                   (lambda ()
-                     (define-syntax #,(datum->syntax #'for 'continue)
-                       (lambda (x)
-                         (syntax-case x ()
-                           ((_)
-                            #'(abort-to-prompt continue-tag))
-                           ((_ . args)
-                            (syntax-violation 'continue "too many arguments" x))
-                           (_
-                            #'(lambda ()
-                                (abort-to-prompt continue-tag))))))
-                     (do ((init-var init-val iterator)) ((not cond) #f) body ...))
-                   (lambda (k) (lp)))))
-             (lambda (k . args)
-               (if (null? args)
-                   #t
-                   (apply values args)))))))))
+       (with-syntax ((break (datum->syntax #'for 'break))
+		     (continue (datum->syntax #'for 'continue)))
+	 #'(let ((break-tag (make-prompt-tag "break"))
+		 (continue-tag (make-prompt-tag "continue")))
+	     (call-with-prompt
+		 break-tag
+	       (lambda ()
+		 (define-syntax break
+		   (lambda (x)
+		     (syntax-case x ()
+		       ((_ arg (... ...))
+			#'(abort-to-prompt break-tag arg (... ...)))
+		       (_
+			#'(lambda args
+			    (apply abort-to-prompt break-tag args))))))
+		 (define-syntax continue
+		   (lambda (x)
+		     (syntax-case x ()
+		       ((_)
+			#'(abort-to-prompt continue-tag))
+		       ((_ . args)
+			(syntax-violation 'continue "too many arguments" x))
+		       (_
+			#'(lambda ()
+			    (abort-to-prompt continue-tag))))))
+		 (let lp ((init-var init-val))
+		   (if cond
+		       (begin
+			 ;; CONTINUE skips the rest of the body, but
+			 ;; still performs the iteration step.
+			 (call-with-prompt
+			     continue-tag
+			   (lambda () body ... (if #f #f))
+			   (lambda (k) #f))
+			 (lp iterator))
+		       #f)))
+	       (lambda (k . args)
+		 (if (null? args)
+		     #t
+		     (apply values args))))))))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; 6.8.6 Jump statements
@@ -1237,23 +1275,36 @@ Else return on-failure."
 ;; may appear in their source properties.  Here are a couple
 ;; of analagous procedures that may work, depending on how
 ;; the code was interpreted or compiled.
+;; Both may be used either as (__FILE__) or as a bare __FILE__.
 (define-syntax __FILE__
-   (syntax-rules ()
-     ((_)
-      (or (assv-ref (current-source-location) 'filename)
-	  "(unknown file)"))))
+  (lambda (x)
+    (let ((src (syntax-source x)))
+      (datum->syntax
+       x
+       (or (and src (assq-ref src 'filename))
+	   "(unknown file)")))))
 
 (define-syntax __LINE__
-   (syntax-rules ()
-     ((_)
-      (or (assv-ref (current-source-location) 'line)
-	  "(unknown line)"))))
+  (lambda (x)
+    (let* ((src (syntax-source x))
+	   (line (and src (assq-ref src 'line))))
+      ;; Guile counts lines from zero, C counts from one.
+      (datum->syntax x (if line (1+ line) "(unknown line)")))))
 
 ;; There is also the core Guile 'current-filename' procedure.
 
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; 7.2.1.1 The assert macro
+
+(eval-when (expand load eval)
+  (define (__file-of x)
+    (let ((src (syntax-source x)))
+      (or (and src (assq-ref src 'filename)) "(unknown file)")))
+  (define (__line-of x)
+    (let* ((src (syntax-source x))
+	   (line (and src (assq-ref src 'line))))
+      (if line (1+ line) "(unknown line)"))))
 
 ;; If expression compares equal to zero, the cassert macro writes
 ;; information about the call that failed, and then calls abort.
@@ -1262,12 +1313,14 @@ Else return on-failure."
   (lambda (x)
     (syntax-case x ()
       ((_ expression)
-       #'(let ((ret expression))
-           (when (zero? ret)
-	     (format (current-error-port) "~a:~a: assertion failed: ~a = ~s"
-		     (__FILE__) (__LINE__) 'expression expression)
-	     (raise SIGABRT)
-	     (primitive-_exit 1)))))))
+       (with-syntax ((file (datum->syntax x (__file-of x)))
+		     (line (datum->syntax x (__line-of x))))
+	 #'(let ((ret expression))
+	     (unless (c-true? ret)
+	       (format (current-error-port) "~a:~a: assertion failed: ~s~%"
+		       file line 'expression)
+	       (force-output (current-error-port))
+	       (abort))))))))
 
 ;; If the expression is false, signal an error with a message about
 ;; the failing expression.
@@ -1275,11 +1328,13 @@ Else return on-failure."
   (lambda (x)
     (syntax-case x ()
       ((_ expression)
-       #'(let ((ret expression))
-           (unless ret
-             (error
-              (format #f "~a:~a: assertion failed: ~a = ~s"
-                      (__FILE__) (__LINE__) 'expression expression))))))))
+       (with-syntax ((file (datum->syntax x (__file-of x)))
+		     (line (datum->syntax x (__line-of x))))
+	 #'(let ((ret expression))
+	     (unless ret
+	       (error
+		(format #f "~a:~a: assertion failed: ~s"
+			file line 'expression)))))))))
 
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -1391,7 +1446,7 @@ Else return on-failure."
 
 (define (conj z)
   "Computes the complex conjugate of z."
-  (- (real-part z) (imag-part z)))
+  (make-rectangular (real-part z) (- (imag-part z))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; 7.3.9.5 The cproj function
@@ -1401,7 +1456,9 @@ Else return on-failure."
 That is, returns z, unless z is infinite."
   (cond
    ((or (inf? (real-part z)) (inf? (imag-part z)))
-    (make-rectangular +inf.0 (imag-part z)))
+    ;; Infinities project to positive infinity, keeping the sign of
+    ;; the imaginary part on a zero.
+    (make-rectangular +inf.0 (if (signbit (imag-part z)) -0.0 0.0)))
    (else
     z)))
 
@@ -1492,7 +1549,7 @@ in the current locale, else 0"
 	1 0)))
 
 (define (isblank? c)
-  "Return #t if the character C is alphabetic."
+  "Return #t if the character C is a blank (space or tab)."
   (char-set-contains? char-set:blank c))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -1552,12 +1609,14 @@ in the current locale, else 0"
 (define (cisprint  _c)
   "Return 1 if the 8-bit integer C maps to a printing character, else 0."
   (let ((c (%cchar _c)))
-    (if (and c (char-set-contains? char-set:printing c))
+    (if (and c (isprint? c))
 	1 0)))
 
 (define (isprint? c)
-  "Return #t if C a printing character."
-  (char-set-contains? char-set:printing c))
+  "Return #t if C a printing character: a graphic character or space.
+Unlike Guile's char-set:printing, this excludes tabs and newlines."
+  (or (char=? c #\space)
+      (char-set-contains? char-set:graphic c)))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; 7.4.1.8 The ispunct function
@@ -1565,12 +1624,15 @@ in the current locale, else 0"
 (define (cispunct  _c)
   "Return 1 if the 8-bit integer C maps to a punctuation character, else 0."
   (let ((c (%cchar _c)))
-    (if (and c (char-set-contains? char-set:punctuation c))
+    (if (and c (ispunct? c))
 	1 0)))
 
 (define (ispunct? c)
-  "Return #t if C a punctuation character."
-  (char-set-contains? char-set:punctuation c))
+  "Return #t if C a punctuation character.  As in C, this is any
+graphic character that is not alphanumeric, so it includes symbols such
+as $, + and ~."
+  (and (char-set-contains? char-set:graphic c)
+       (not (char-set-contains? char-set:letter+digit c))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; 7.4.1.10 The isspace function
@@ -1598,6 +1660,8 @@ in the current locale, else 0"
   "Return #t if C is an uppercase character."
    (char-set-contains? char-set:upper-case c))
 
+(define cissupper cisupper)
+
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; 7.4.1.12 The isxdigit function
 
@@ -1609,7 +1673,7 @@ character, else 0."
 	1 0)))
 
 (define (isxdigit? c)
-  "Return #t if C is a whitespace character."
+  "Return #t if C is a hexadecimal digit."
    (char-set-contains? char-set:hex-digit c))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -1617,10 +1681,11 @@ character, else 0."
 
 (define (ctolower _c)
   "Return the 8-bit integer representation of the lower-case letter
-to which the 8-bit integer maps."
+to which the 8-bit integer maps.  As in C, if there is no such letter,
+the argument is returned unchanged."
   (let* ((c (%cchar _c))
-	 (L (and c (char-downcase c))))
-    (%char->cchar L)))
+	 (L (and c (%char->cchar (char-downcase c)))))
+    (or L _c)))
 
 (define (tolower c)
   (char-downcase c))
@@ -1630,10 +1695,11 @@ to which the 8-bit integer maps."
 
 (define (ctoupper _c)
   "Return the 8-bit integer representation of the upper-case letter
-to which the 8-bit integer maps."
+to which the 8-bit integer maps.  As in C, if there is no such letter,
+the argument is returned unchanged."
   (let* ((c (%cchar _c))
-	 (L (and c (char-upcase c))))
-    (%char->cchar L)))
+	 (L (and c (%char->cchar (char-upcase c)))))
+    (or L _c)))
 
 (define (toupper c)
   (char-upcase c))
@@ -1677,10 +1743,10 @@ to which the 8-bit integer maps."
 ;; 7.8.2.2 The imaxdiv function
 
 (define (imaxdiv numer denom)
-  "Return a pair containing the numerator and the denominator
-of the integer division of the variables."
-  (let ((ratio (/ numer denom)))
-    (cons (numerator ratio) (denominator ratio))))
+  "Return a pair containing the quotient and the remainder of the
+integer division of NUMER by DENOM.  As in C, the quotient is truncated
+toward zero."
+  (cons (quotient numer denom) (remainder numer denom)))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; 7.8.2.3 The strtoimax and strtoumax functions
@@ -1694,8 +1760,8 @@ If BASE is 0, the number will assumed to be base-16 if it starts with
 
 Will return a a pair.  The car is the integer value, or zero if no
 conversion can be returned.  The cdr is the number of characters
-processed."
-  (strtol-idx _str base))
+processed.  Values out of range are clamped to INT64_MIN or INT64_MAX."
+  (%strto-idx _str base INT64_MIN INT64_MAX))
 
 (define* (strtoimax _str #:optional (base 0))
   "Convert STR to an integer, assuming BASE. BASE is either 0, or 2 to
@@ -1706,7 +1772,17 @@ If BASE is 0, the number will assumed to be base-16 if it starts with
 
 Will return an integer value, or zero if no conversion can be
 returned."
-  (car (strtol-idx _str base)))
+  (car (strtoimax-idx _str base)))
+
+(define* (strtoumax-idx _str #:optional (base 0))
+  "Like STRTOIMAX-IDX, but for unsigned values.  As in C, a negative
+number is negated in the unsigned type, and values out of range
+are clamped to UINT64_MAX."
+  (%strto-idx _str base #f UINT64_MAX))
+
+(define* (strtoumax _str #:optional (base 0))
+  "Like STRTOIMAX, but for unsigned values."
+  (car (strtoumax-idx _str base)))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; 7.9 Alternative spellings <iso646.h>
@@ -1751,12 +1827,12 @@ returned."
 rules for the current locale."
   (let ((loc %global-locale))
     (list
-     (cons 'decimal-point (locale-decimal-point))
+     (cons 'decimal-point (locale-decimal-point loc))
      (cons 'thousands-separator (locale-thousands-separator loc))
      (cons 'grouping (locale-digit-grouping loc))
      (cons 'mon-decimal-point (locale-monetary-decimal-point loc))
      (cons 'mon-thousands-sep (locale-monetary-thousands-separator loc))
-     ;;(cons 'mon-grouping (locale-monetary-grouping loc))
+     (cons 'mon-grouping (locale-monetary-grouping loc))
      (cons 'positive-sign (locale-monetary-positive-sign loc))
      (cons 'negative-sign (locale-monetary-negative-sign loc))
 
@@ -1770,9 +1846,9 @@ rules for the current locale."
      (cons 'p-sep-by-space
 	   (locale-positive-separated-by-space? #f loc))
      (cons 'n-sep-by-space
-	   (locale-negative-separated-by-space? #f loc))`
-     (cons 'p-sign-posn (locale-monetary-positive-sign loc))
-     (cons 'n-sign-posn (locale-monetary-negative-sign loc))
+	   (locale-negative-separated-by-space? #f loc))
+     (cons 'p-sign-posn (locale-positive-sign-position #f loc))
+     (cons 'n-sign-posn (locale-negative-sign-position #f loc))
 
      (cons 'int-curr-symbol (locale-currency-symbol #t loc))
      (cons 'int-frac-digits
@@ -1784,16 +1860,16 @@ rules for the current locale."
      (cons 'int-p-sep-by-space
 	   (locale-positive-separated-by-space? #t loc))
      (cons 'int-n-sep-by-space
-	   (locale-negative-separated-by-space? #t loc))`
-     (cons 'int-p-sign-posn (locale-monetary-positive-sign loc))
-     (cons 'int-n-sign-posn (locale-monetary-negative-sign loc)))))
+	   (locale-negative-separated-by-space? #t loc))
+     (cons 'int-p-sign-posn (locale-positive-sign-position #t loc))
+     (cons 'int-n-sign-posn (locale-negative-sign-position #t loc)))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; 7.12.3.2 The isfinite macro
 
 (define (cisfinite x)
   "Return 1 if X is finite, else 0."
-  (if (finite? x) 0 1))
+  (if (finite? x) 1 0))
 
 (define (isfinite? x)
   "Return #t if X is finite, else #f."
@@ -1813,7 +1889,7 @@ rules for the current locale."
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; 7.12.3.4 The isnan macro
 
-(define (cisinf x)
+(define (cisnan x)
   "Return 1 if X is +nan.0, else 0."
   (if (nan? x) 1 0))
 
@@ -1824,34 +1900,35 @@ rules for the current locale."
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; 7.12.3.5 The isnormal macro
 
-(define (cisnormal x)
-  "Return 1 is X is neither zero, subnormal, infinite, or NaN.
-Else 0."
-  (if (and (not (zero? x))
-	   (not (inf? x))
-	   (not (nan? x)))
-      1
-      0))
+(define DBL_MIN 2.2250738585072014e-308) ; smallest normal double
 
 (define (isnormal? x)
   "Return #t if the number X is neither zero, subnormal, infinite,
 or NaN.  Else #f"
-  (and (not (zero? x))
+  (and (not (nan? x))
        (not (inf? x))
-       (not (nan? x))))
+       (>= (abs x) DBL_MIN)))
+
+(define (cisnormal x)
+  "Return 1 is X is neither zero, subnormal, infinite, or NaN.
+Else 0."
+  (if (isnormal? x) 1 0))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; 7.12.3.6 The signbit macro
 
-(define (csignbit x)
-  "Return 1 if x is negative. Else 0."
-  (if (< x 0) 1 0))
-
 (define (signbit x)
-  "Return #t if x is negative."
-  (if (< x 0)
-      #t
-      #f))
+  "Return #t if the sign of X is negative.  Unlike (< x 0), this is
+true for -0.0 and for NaNs with the sign bit set."
+  (if (and (inexact? x) (real? x))
+      (let ((bv (make-bytevector 8)))
+	(bytevector-ieee-double-set! bv 0 x (endianness big))
+	(logbit? 7 (bytevector-u8-ref bv 0)))
+      (< x 0)))
+
+(define (csignbit x)
+  "Return 1 if the sign of X is negative. Else 0."
+  (if (signbit x) 1 0))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; 7.12.4.1 The acos functions
@@ -1882,37 +1959,50 @@ or NaN.  Else #f"
 ;; 7.12.6.3 The expm1 functions
 
 (define (expm1 x)
-  "Computes the base-e exponential of the argument, minus 1."
-  (- (exp x) 1.0))
+  "Computes the base-e exponential of the argument, minus 1.  This is
+accurate even when X is close to zero."
+  ;; Kahan's trick: the rounding errors in U and in (log U) cancel.
+  (let ((u (exp (exact->inexact x))))
+    (cond
+     ((= u 1.0) (exact->inexact x))
+     ((= (- u 1.0) -1.0) -1.0)
+     ((inf? u) u)
+     (else (/ (* (- u 1.0) x) (log u))))))
 
 ;; 7.12.6.4 The frexp functions
 
-;; FIXME: slow and accumulates multiplication errors
+(define (binary-exponent q)
+  "For a positive exact rational Q, return the integer E such that
+2^E <= Q < 2^(E+1)."
+  (let loop ((e (- (integer-length (numerator q))
+		   (integer-length (denominator q)))))
+    (cond
+     ((< q (expt 2 e)) (loop (1- e)))
+     ((>= q (expt 2 (1+ e))) (loop (1+ e)))
+     (else e))))
+
 (define (frexp val)
-  "Returns val broken as a normalized fraction and an integral power
-of 2."
-  (if (zero? val)
-      (cons 0 0)
-      ;;
-      (let loop ((val val)
-		 (x   0))
-	(cond
-	 ((< val 0.5)
-	  (loop (* val 2.0) (1- x)))
-	 ((>= val 1.0)
-	  (loop (* val 0.5) (1+ x)))
-	 (else
-	  (cons val x))))))
+  "Returns VAL broken into a normalized fraction and an integral power
+of 2, as a pair (FRACTION . EXPONENT).  The magnitude of FRACTION is
+in [0.5, 1), and VAL = FRACTION * 2^EXPONENT.  If VAL is zero, infinite,
+or NaN, FRACTION is VAL and EXPONENT is 0."
+  (let ((x (exact->inexact val)))
+    (if (or (zero? x) (inf? x) (nan? x))
+	(cons x 0)
+	(let* ((q (inexact->exact (abs x)))
+	       (e (1+ (binary-exponent q)))
+	       (frac (exact->inexact (/ q (expt 2 e)))))
+	  (cons (if (< x 0) (- frac) frac) e)))))
 
 ;; 7.12.11.1 The copysign functions
 
 (define (copysign x y)
   "Return a value with the magnitude of X and the sign of Y. Y should not be
 complex."
-  (* (magnitude x)
-     (if (< 0 y)
-	 -1
-	 1)))
+  (let ((m (magnitude x)))
+    (if (signbit y)
+	(- m)
+	m)))
 
 ;; 7.12.11.2 The nan functions
 ;; In C, nan returns a double-valued NaN.
@@ -1938,12 +2028,9 @@ within floating point precision.  Otherwise return 0."
 	(y2 (if (exact? y)
 		(exact->inexact y)
 		y)))
-    (cond
-     ((< (abs x2) (abs y2))
-      1)
-     ((> (abs x2) (abs y2))
-      1)
-     (else 0))))
+    (if (or (< x2 y2) (> x2 y2))
+	1
+	0)))
 
 (define (islessgreater x y)
   "Return #t if the inexact numbers X and Y are not equal within
@@ -1954,12 +2041,7 @@ floating point precision. Otherwise return #f."
 	(y2 (if (exact? y)
 		(exact->inexact y)
 		y)))
-    (cond
-     ((< (abs x2) (abs y2))
-      #t)
-     ((> (abs x2) (abs y2))
-      #t)
-     (else #f))))
+    (or (< x2 y2) (> x2 y2))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; 7.13 Nonlocal jumps
@@ -2038,10 +2120,6 @@ handler."
 (define INT64_MAX (signed-limit (sizeof int64)))
 (define UINT64_MAX (unsigned-limit (sizeof uint64)))
 
-(define LONG_MIN (signed-limit-neg (sizeof long)))
-(define LONG_MAX (signed-limit (sizeof long)))
-(define ULONG_MAX (unsigned-limit (sizeof unsigned-long)))
-
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; 7.21 Input/output <stdio.h>
 
@@ -2113,23 +2191,20 @@ be known by the name NEW."
 
 ;; 7.21.6.5 The snprintf function
 
-;; Sets the string S to the first N character of the formatted
-;; output created by the format string and its arguments. Returns the
-;; length of the formatted output. N may be zero, in which case the
-;; string S is not modified."
+;; Sets the variable S to the formatted output created by the format
+;; string and its arguments, truncated to N - 1 characters (in C, the
+;; Nth byte holds the terminating null).  Returns the length of the
+;; untruncated formatted output.  N may be zero, in which case S is
+;; not modified.
 
 (define-syntax snprintf
   (syntax-rules ()
-    ((_ s n format . args)
-     (let ((out (apply asprintf (append (list format) args))))
-       (let ((outlen (string-length out)))
-	 (cond
-	  ;; If N is zero, just return the length of the formatted string.
-	  ((zero? n)
-	   outlen)
-	  (else
-	   (set! s (substring out 0 (min (string-length out) n)))
-	   outlen)))))))
+    ((_ s n format arg ...)
+     (let* ((out (asprintf format arg ...))
+	    (outlen (string-length out)))
+       (unless (zero? n)
+	 (set! s (substring out 0 (min outlen (1- n)))))
+       outlen))))
 
 ;; 7.21.6.6 The sprintf function
 
@@ -2139,11 +2214,10 @@ be known by the name NEW."
 
 (define-syntax sprintf
   (syntax-rules ()
-    ((_ s format . args)
-     (let ((out (apply asprintf (append (list format) args))))
-       (let ((outlen (string-length out)))
-	 (set! s out)
-	 outlen)))))
+    ((_ s format arg ...)
+     (let ((out (asprintf format arg ...)))
+       (set! s out)
+       (string-length out)))))
 
 #!
 (define FLAG_GROUP 1)
@@ -2202,11 +2276,27 @@ be known by the name NEW."
 
 ;; 7.21.7.2 The fgets function
 (define (fgets str n port)
-  "Read a line of text from port. Copy that text into the string STR.
-If the line of text is greater than n characters, only n characters
-are copied."
-  (let ((x (read-line port 'concat)))
-    (string-copy! str 0 x 0 (min n (string-length x)))))
+  "Read at most N - 1 characters from PORT, stopping after a newline,
+which is kept.  Copy that text into the start of the mutable string
+STR, as far as it fits.  Returns the text read, or #f if no characters
+could be read before the end of file."
+  (let loop ((chars '())
+	     (count 0))
+    (if (>= count (1- n))
+	(%fgets-finish str chars)
+	(let ((c (read-char port)))
+	  (cond
+	   ((eof-object? c)
+	    (if (null? chars) #f (%fgets-finish str chars)))
+	   ((char=? c #\newline)
+	    (%fgets-finish str (cons c chars)))
+	   (else
+	    (loop (cons c chars) (1+ count))))))))
+
+(define (%fgets-finish str chars)
+  (let ((x (list->string (reverse chars))))
+    (string-copy! str 0 x 0 (min (string-length str) (string-length x)))
+    x))
 
 
 
@@ -2260,13 +2350,10 @@ characters after the number are ignored."
 
 (define (atoi _str)
   "Search the beginning of _str for a base-10 integer.  Return
-the value if found, or #f otherwise."
-  (car (strtol _str 10)))
+the value if found, or 0 otherwise."
+  (strtol _str 10))
 
 ;; 7.22.1.3 The strtod, strtof, and strtold functions
-(define *integer-match*
-  (make-regexp "^[-+]?[0-9]+"))
-
 (define *infinity-match*
   (make-regexp
    "^[-+]?(INF|INFINITY)" regexp/icase))
@@ -2351,48 +2438,81 @@ with optional exponent into a number."
 		   (/ fractional
 		      (expt 16 (string-length fractional-str))))))
        ((and (not fractional) exponent)
-	;; Integer
-	(* sign significand (expt 10 exponent)))
+	;; Integer.  The exponent is a power of 2.
+	(* sign significand (expt 2 exponent)))
        (else
 	;; Floating point
 	(* sign
 	   (+ significand
 	      (/ fractional (expt 16 (string-length fractional-str))))
-	   (expt 10 exponent)))))))
+	   (expt 2 exponent)))))))
+
+(define (%c-whitespace? c)
+  (memv c '(#\space #\tab #\newline #\vtab #\page #\return)))
+
+(define (%skip-whitespace str)
+  "Return the index of the first non-whitespace character in STR."
+  (or (string-index str (lambda (c) (not (%c-whitespace? c))))
+      (string-length str)))
+
+(define (%negative-prefix? str)
+  (and (> (string-length str) 0) (char=? (string-ref str 0) #\-)))
+
+(define (%->inexact x negative?)
+  "Convert the exact value X to a float, keeping the sign of zero."
+  (let ((y (exact->inexact x)))
+    (if (and negative? (zero? y)) -0.0 y)))
+
+(define (%decimal->exact str)
+  "Parse the decimal floating-point string STR exactly, so that rounding
+to a float happens only once.  Huge exponents are clamped, since they
+over- or underflow anyway."
+  (let* ((epos (string-index str (char-set #\e #\E)))
+	 (mant (string->number (string-append "#e" (if epos (substring str 0 epos) str))))
+	 (ex (if epos (string->number (substring str (1+ epos))) 0)))
+    (* mant (expt 10 (max -10000 (min 10000 ex))))))
 
 (define (strtod str)
-  "Convert STR into a real number, returning both the number
+  "Convert STR into a real number, returning a pair of the number
 and a string containing the unused characters after the number.
-The number is one of the the following forms
+Leading whitespace is skipped. The number is one of the the following
+forms
 - an optional plus or minus followed by INF or INFINITY, ignoring case
 - an optional plus or minus followed by NAN, ignoring case.
 - A string of the form NAN(<type>), where <type> is a string containing
-  alphanumeric or hyphen characters.
+  alphanumeric or underscore characters.
 - a base-10 decimal floating point
 - a base-16 float starting with 0x or 0X and using p or P as
-  the exponent separator."
-  (let ((s (string-trim str)))
-    (if (string-null? s)
-	(cons 0.0 (substring s 0))
-	(let ((match1 (regexp-exec *hex-floating-point-match* s)))
-	  (if match1
-	      (cons (or (hexstr->number (remove-zero-x (match:substring match1))) 0.0)
-		    (substring s (match:end match1)))
-	      (let ((match2 (regexp-exec *floating-point-match* s)))
-		(if match2
-		    (cons (or (string->number (match:substring match2)) 0.0)
-			  (substring s (match:end match2)))
-		    (let ((match3 (regexp-exec *infinity-match* s)))
-		      (if match3
-			  (cons (inf)
-				(substring s (match:end match3)))
-			  (let ((match4 (regexp-exec *nan-match* s)))
-			    (if match4
-				(cons (nan)
-				      (substring s (match:end match4)))
-				(cons 0.0
-				      (substring s 0)))))))))))))
+  the exponent separator.
+If no number can be found, the result is 0.0, and the unused
+characters are the whole of STR."
+  (let* ((s (substring str (%skip-whitespace str)))
+	 (neg (%negative-prefix? s)))
+    (define (result m val)
+      (cons val (substring s (match:end m))))
+    (cond
+     ((regexp-exec *hex-floating-point-match* s)
+      => (lambda (m)
+	   (result m (%->inexact
+		      (hexstr->number (remove-zero-x (match:substring m)))
+		      neg))))
+     ((regexp-exec *floating-point-match* s)
+      => (lambda (m)
+	   ;; Parse the digits exactly, so that rounding happens only once.
+	   (result m (%->inexact (%decimal->exact (match:substring m)) neg))))
+     ((regexp-exec *infinity-match* s)
+      => (lambda (m) (result m (if neg (- (inf)) (inf)))))
+     ((regexp-exec *nan-match* s)
+      => (lambda (m) (result m (nan))))
+     (else
+      (cons 0.0 str)))))
 
+(define (strtof str)
+  "Like STRTOD, but the number is rounded to single precision."
+  (let ((ret (strtod str))
+	(bv (make-bytevector 4)))
+    (bytevector-ieee-single-native-set! bv 0 (car ret))
+    (cons (bytevector-ieee-single-native-ref bv 0) (cdr ret))))
 
 ;; 7.22.1.4 The strtol, strtoll, strtoul, strtoull functions
 
@@ -2402,6 +2522,61 @@ if the index is out of bounds."
   (if (< i (string-length str))
       (string-ref str i)
       #\null))
+
+(define (%digit-value c)
+  (cond
+   ((char<=? #\0 c #\9) (- (char->integer c) (char->integer #\0)))
+   ((char<=? #\A c #\Z) (+ 10 (- (char->integer c) (char->integer #\A))))
+   ((char<=? #\a c #\z) (+ 10 (- (char->integer c) (char->integer #\a))))
+   (else #f)))
+
+(define (%strto-idx str base lo hi)
+  "Common code for the strtol family.  Parse an integer at the start of
+STR in BASE, then clamp it to [LO, HI].  If LO is #f, the conversion is
+unsigned: a negative value is negated modulo HI + 1.  Return a pair of
+the value and the index just after the last character used, or
+(0 . 0) if there is no number."
+  (unless (or (= base 0) (<= 2 base 36))
+    (scm-error 'out-of-range "strtol" "invalid base ~a" (list base) (list base)))
+  (let* ((len (string-length str))
+	 (start (%skip-whitespace str))
+	 (neg (and (< start len) (char=? (string-ref str start) #\-)))
+	 (i (if (and (< start len) (memv (string-ref str start) '(#\- #\+)))
+		(1+ start)
+		start))
+	 (digit-at (lambda (k b)
+		     (and (< k len)
+			  (let ((v (%digit-value (string-ref str k))))
+			    (and v (< v b) v)))))
+	 ;; A 0x prefix only counts if a hex digit follows it.
+	 (hex-prefix? (and (memv base '(0 16))
+			   (< (1+ i) len)
+			   (char=? (string-ref str i) #\0)
+			   (char-ci=? (string-ref str (1+ i)) #\x)
+			   (digit-at (+ i 2) 16)))
+	 (base (cond
+		(hex-prefix? 16)
+		((not (= base 0)) base)
+		((and (< i len) (char=? (string-ref str i) #\0)) 8)
+		(else 10)))
+	 (i (if hex-prefix? (+ i 2) i)))
+    (let loop ((k i) (acc 0))
+      (let ((v (digit-at k base)))
+	(cond
+	 (v
+	  (loop (1+ k) (+ (* acc base) v)))
+	 ((= k i)
+	  ;; No digits at all.
+	  (cons 0 0))
+	 (else
+	  (let ((val (if neg (- acc) acc)))
+	    (cons (cond
+		   ((not lo)
+		    (if (> acc hi) hi (modulo val (1+ hi))))
+		   ((< val lo) lo)
+		   ((> val hi) hi)
+		   (else val))
+		  k))))))))
 
 (define* (strtol _str #:optional (base 0))
   "Convert STR to an integer, assuming BASE. BASE is either 0, or 2 to
@@ -2422,60 +2597,20 @@ If BASE is 0, the number will assumed to be base-16 if it starts with
 0x or 0X, base 8 if it starts with 0, or base 10 otherwise.
 
 Will return a a pair.  The car is the integer value, or zero if no
-conversion can be returned.  The cdr is the number of characters
-processed."
-  (let ((str (string-trim _str)))
-    (if (string-null? str)
-	;; String is empty; quit now.
-	(cons 0 0)
+conversion can be returned.  The cdr is the index in STR just after
+the number, or zero if there is no number.  As in C, values out of
+range are clamped to LONG_MIN or LONG_MAX."
+  (%strto-idx _str base LONG_MIN LONG_MAX))
 
-	(let ((i 0)
-	      (neg #f))
-	  ;; Look for a Guile style initializer of #x, #o #d or
-	  ;; #b, maybe followed by plus or minus.
-	  ;; FIXME
-	  (if (char=? (string-ref-safe str i) #\#)
-	      'fixme)
-	  ;; Otherwise,
-	  ;; Look for a C style initializer of plus or minus maybe
-	  ;; followed by 0x for hex.
-	  (if (char=? (string-ref-safe str i) #\-)
-	      (begin
-		(set! neg #t)
-		(set! i (1+ i)))
-	      (if (char=? (string-ref-safe str i) #\+)
-		  (set! i (1+ i))))
-	  (if (and (= base 0)
-		   (char=? (string-ref-safe str i) #\0)
-		   (char-ci=? (string-ref-safe str (1+ i)) #\x))
-	      (begin
-		(set! i (+ i 2))
-		(set! base 16)))
-	  (if (and (= 0 base)
-		   (char=? (string-ref str i) #\0))
-		  (set! base 8))
-	  (if (= base 0)
-	      (set! base 10))
-	  (let loop ((c (string-ref-safe str i))
-		     (i i)
-		     (acc 0))
-	    (let ((val (cond
-			((and (char>=? c #\0) (char<=? c #\9))
-			 (- (char->integer c) (char->integer #\0)))
-			((and (char>=? c #\A)  (char<=? c #\Z))
-			 (+ 10 (- (char->integer c) (char->integer #\A))))
-			((and (char>=? c #\a)  (char<=? c #\z))
-			 (+ 10 (- (char->integer c) (char->integer #\a))))
-			(else
-			 #f))))
-	      (if (or (not val) (>= val base))
-		  ;; return
-		  (cons (if neg (- acc) acc) i)
-		  ;; else continue
-		  (begin
-		    (loop (string-ref-safe str (1+ i))
-			  (1+ i)
-			  (+ (* acc base) val))))))))))
+(define* (strtoul _str #:optional (base 0))
+  "Like STRTOL, but for unsigned long values."
+  (car (strtoul-idx _str base)))
+
+(define* (strtoul-idx _str #:optional (base 0))
+  "Like STRTOL-IDX, but for unsigned long values.  As in C, a negative
+number is negated in the unsigned type, and values out of range are
+clamped to ULONG_MAX."
+  (%strto-idx _str base #f ULONG_MAX))
 
 ;; 7.22.2.1 The rand function
 (define *local-random-state* #f)
@@ -2483,13 +2618,13 @@ processed."
 (define (rand)
   "Retun a random number between 0 and RAND_MAX"
   (if *local-random-state*
-      (random RAND_MAX *local-random-state*)
+      (random (1+ RAND_MAX) *local-random-state*)
       (random (1+ RAND_MAX))))
 
 ;; 7.22.2.2 The srand function
 
 (define (srand x)
-  "See the random state used by 'rand'."
+  "Seed the random state used by 'rand'."
   (set! *local-random-state* (seed->random-state x)))
 
 ;; 7.22.3.1 The aligned_alloc function
@@ -2525,8 +2660,9 @@ the extra bytes in BV will be undetermined."
   "This procedure causes abnormal program termination to occur,
 unless the SIGABRT is being caught and the signal handler does not
 return."
-  (raise SIGABRT)
-  (primitive-_exit 1))
+  (kill (getpid) SIGABRT)
+  ;; Only reached if SIGABRT is caught and the handler returns.
+  (primitive-_exit 134))
 
 ;; 7.22.4.2 The atexit function
 
@@ -2554,50 +2690,41 @@ return."
   (cons (quotient num denom)
 	(remainder num denom)))
 
+(define MB_LEN_MAX 16)
+
+(define (%decode-first-char mbs)
+  "Try to decode the first character of the bytevector MBS using the
+current locale's encoding.  Return a pair of the character and the
+number of bytes it uses, or #f."
+  (let ((enc (locale-encoding %global-locale))
+	(maxlen (min MB_LEN_MAX (bytevector-length mbs))))
+    (let loop ((len 1))
+      (if (> len maxlen)
+	  #f
+	  (let ((bv (make-bytevector len)))
+	    (bytevector-copy! mbs 0 bv 0 len)
+	    (let ((str (false-if-exception (bytevector->string bv enc 'error))))
+	      (if (and str (= (string-length str) 1))
+		  (cons (string-ref str 0) len)
+		  ;; else, didn't convert, so keep looping
+		  (loop (1+ len)))))))))
+
 ;; 7.22.7.1 The mblen function
-;; FIXME: horribly inefficient.
 (define (mblen mbs)
   "Compute the number of bytes required to extract the first
 representation of a character in the current locale, or #f if the
 first few bytes do not form a character in the current locale."
-  (let ((enc (locale-encoding %global-locale))
-	(maxlen (min MB_LEN_MAX (bytevector-length mbs))))
-  (let loop ((len 1))
-    (if (> len maxlen)
-	#f
-	;; else
-	(let ((bv (make-bytevector len)))
-	  (bytevector-copy! mbs 0 bv 0 len)
-	  (let ((str (false-if-exception (bytevector->string bv enc 'error))))
-	    (if (and str (> (string-length str) 0))
-		len
-		;; else, didn't convert, so keep looping
-		(loop (1+ len)))))))))
-
-(define MB_LEN_MAX 8)
+  (let ((ret (%decode-first-char mbs)))
+    (and ret (cdr ret))))
 
 ;; 7.22.7.2 The mbtowc function
-;; FIXME: horribly inefficient.  Copy-pasta with mblen.
 (define (mbtowc mbs)
   "Converts the first multibyte character byte sequence in the
 bytevector into a corresponding character, interpreting the bytevector
 bytes as an encoded string in the current locale.  It returns #f on a
 conversion error."
-  (let ((enc (locale-encoding %global-locale))
-	(maxlen (min MB_LEN_MAX (bytevector-length mbs))))
-  (let loop ((len 1))
-    (if (> len maxlen)
-	#f
-	;; else
-	(let ((bv (make-bytevector len)))
-	  (bytevector-copy! mbs 0 bv 0 len)
-	  (let ((str (false-if-exception (bytevector->string bv enc 'error))))
-	    (begin
-	      (write str) (newline)
-	      (if (and str (> (string-length str) 0))
-		  (string-ref str 0)
-		  ;; else, didn't convert, so keep looping
-		  (loop (1+ len))))))))))
+  (let ((ret (%decode-first-char mbs)))
+    (and ret (car ret))))
 
 ;; 7.22.7.3 The wctomb function
 (define (wctomb wc)
@@ -2644,19 +2771,21 @@ conversion error."
 
 ;; 7.24.2.2 The memmove function
 ;; MEMMOVE copies a block of raw memory from one location to another, just
-;; like MEMCPY, but, being smart about overlapping regions.  But since
-;; it is quite difficult to create overlapping bytevectors, MEMCPY
+;; like MEMCPY, but, being smart about overlapping regions.  Since
+;; BYTEVECTOR-COPY! already handles a bytevector copied onto itself,
+;; MEMMOVE is the same as MEMCPY.
+(define memmove memcpy)
 
 ;; 7.24.2.3 The strcpy function
 
 (define (strcpy dest src)
-  "Copies the contents of string DEST into string SRC.  If DEST is
+  "Copies the contents of string SRC into string DEST.  If DEST is
 shorter than SRC, then only (string-length DEST) characters of SRC are
-morified.  If DEST is longer than SRC, then the characters in DEST
-that will not fit in SRC are ignored.
+copied.  If DEST is longer than SRC, the remaining characters of DEST
+are unchanged.
 
-Note that if SRC is not a writable string, such as created with
-'string-copy' this procedure will fail."
+Note that if DEST is not a writable string, such as one created with
+'string-copy', this procedure will fail."
   (let ((srclen (string-length src))
 	(destlen (string-length dest)))
     (substring-move! src 0 (min srclen destlen) dest 0)
@@ -2669,8 +2798,9 @@ Note that if SRC is not a writable string, such as created with
   (let ((srclen (string-length src))
 	(destlen (string-length dest)))
     (substring-move! src 0 (min srclen destlen count) dest 0)
-    (if (and (< srclen count) (<= count destlen))
-	(substring-fill! dest srclen count #\null))
+    ;; As in C, if SRC is shorter than COUNT, pad with nulls.
+    (when (< srclen (min count destlen))
+      (substring-fill! dest srclen (min count destlen) #\null))
     dest))
 
 ;; 7.24.3.1 The strcat function
@@ -2679,7 +2809,12 @@ Note that if SRC is not a writable string, such as created with
 ;; of it.
 
 ;; 7.24.3.2 The strncat function
-;; Ditto with strncat.
+;; Since strings can't grow in place, this version returns a new
+;; string.
+(define (strncat dest src count)
+  "Return a new string made of DEST followed by at most COUNT characters
+of SRC."
+  (string-append dest (substring src 0 (min count (string-length src)))))
 
 ;; 7.24.4.1 The memcmp function
 ;; MEMCMP is a binary comparison between two raw locations in memory.
@@ -2762,21 +2897,28 @@ in the bytevector BV.  If C doesn't occur in the first N bytes of BV,
 	      ;; else
 	      (loop (1+ i)))))))
 
+(define memchr memchr-idx)
+
 ;; 7.24.5.2 The strchr function
 ;; STRCHR doesn't really translate because it returns a pointer to the
 ;; first character, but, a good approimation is
 ;; (string-index STR CHAR)
 
 (define (strchr-idx str c)
+  "Return the index of the first occurrence of the character C in STR,
+or #f."
   (string-index str c))
+
+(define strchr strchr-idx)
 
 ;; 7.24.5.3 The strcspn function
 (define (strcspn dest src)
   "Returns the length of the maximum initial segment of the DEST, that
 consists of only the characters *not* found in SRC."
   (let ((charset (string->char-set src)))
-    (string-index dest (lambda (c)
-			 (char-set-contains? charset c)))))
+    (or (string-index dest (lambda (c)
+			     (char-set-contains? charset c)))
+	(string-length dest))))
 
 ;; 7.24.5.4 The strpbrk function
 ;; STRPBRK doesn't translate because it returns a pointer.  It scans
@@ -2791,21 +2933,26 @@ in SRC."
     (string-index dest (lambda (c)
 			 (char-set-contains? charset c)))))
 
+(define strpbrk strpbrk-idx)
+
 ;; 7.24.5.5 The strrchr function
 ;; STRRCHR doesn't really translate bedcause it returns a pointer
 ;; to the last matching character.  A good approximation is
 ;; (string-index-right STR CHAR)
 (define (strrchr-idx str c)
-  "Locates the index to the last occurrenc of c in the string STR."
+  "Locates the index to the last occurrence of c in the string STR."
   (string-index-right str c))
+
+(define strrchr strrchr-idx)
 
 ;; 7.24.5.6 The strspn function
 (define (strspn dest src)
   "Returns the length of the maximum intial segment (span) of DEST
 that consists only of the characters that are found in SRC."
   (let ((charset (string->char-set src)))
-    (string-index dest (lambda (c)
-			 (not (char-set-contains? charset c))))))
+    (or (string-index dest (lambda (c)
+			     (not (char-set-contains? charset c))))
+	(string-length dest))))
 
 ;; 7.24.5.7 The strstr function
 ;; STRSTR doesn't translate because it returns a pointer. It scans
@@ -2817,21 +2964,39 @@ that consists only of the characters that are found in SRC."
 DEST, or #f if the string STR can not be found in DEST."
   (string-contains dest src))
 
+(define strstr strstr-idx)
+
 ;; 7.24.5.8 The strtok function
+(define *strtok-rest* #f)
+
+(define (strtok str delims)
+  "Return the next token in STR, delimited by any character in the
+string DELIMS, or #f if there are no more tokens.  As in C, call it
+first with a string, and then with STR set to #f to get the following
+tokens from the same string."
+  (let* ((charset (string->char-set delims))
+	 (s (or str *strtok-rest* ""))
+	 (start (string-skip s charset)))
+    (if (not start)
+	(begin
+	  (set! *strtok-rest* #f)
+	  #f)
+	(let ((end (string-index s charset start)))
+	  (set! *strtok-rest* (and end (substring s (1+ end))))
+	  (substring s start (or end (string-length s)))))))
 
 ;; 7.24.6.2 The memset function
 ;; MEMSET fills a raw location in memory.  If we're using bytevectors
 ;; to hold raw blocks, it could be implemented like the following.
-(define (memset dest ch count)
-  "Fill the first COUNT bytes of bytevector DEST with the unsigned
-8-bit integer ch."
-  (let ((end (min count (bytevector-length dest))))
-    (if (= end (bytevector-length dest))
-	(bytevector-fill! dest ch)
-	;; else
-	(do ((i 0 (1+ i)))
-	    ((>= i end))
-	  (bytevector-u8-set! dest i ch)))))
+(define (memset dest _ch count)
+  "Fill the first COUNT bytes of bytevector DEST with CH, converted to
+an unsigned 8-bit integer as in C.  Return DEST."
+  (let ((end (min count (bytevector-length dest)))
+	(ch (logand #xff (if (char? _ch) (char->integer _ch) _ch))))
+    (do ((i 0 (1+ i)))
+	((>= i end))
+      (bytevector-u8-set! dest i ch))
+    dest))
 
 ;; 7.24.6.2 The strerror function
 ;; STRERROR returns a text version of errno.  It exists in core Guile.
@@ -2840,6 +3005,10 @@ DEST, or #f if the string STR can not be found in DEST."
 (define (strlen str)
   "Return the length of STR."
   (string-length str))
+
+(define (strnlen str n)
+  "Return the length of STR, but at most N."
+  (min n (string-length str)))
 
 
 
@@ -2850,55 +3019,310 @@ DEST, or #f if the string STR can not be found in DEST."
 
 
 
-(define (ilogb val)
-  'fixme)
+;; Most of these work on the exact rational value of a float, so that
+;; they are exact, or correctly rounded.
 
-(define (ldexp val)
-  'fixme)
+(define (%finite-nonzero? x)
+  (and (not (zero? x)) (not (inf? x)) (not (nan? x))))
+
+(define (%float-exponent x)
+  "For a finite, non-zero X, the exponent E such that 2^E <= |X| < 2^(E+1)."
+  (binary-exponent (abs (inexact->exact x))))
+
+(define FP_ILOGB0 INT_MIN)
+(define FP_ILOGBNAN INT_MIN)
+
+(define (ilogb x)
+  "Return the binary exponent of X as an integer, so that 1 <= |X|/2^E < 2.
+Returns FP_ILOGB0 for zero, FP_ILOGBNAN for NaN and INT_MAX for
+infinities."
+  (cond
+   ((nan? x) FP_ILOGBNAN)
+   ((inf? x) INT_MAX)
+   ((zero? x) FP_ILOGB0)
+   (else (%float-exponent x))))
+
+(define (logb x)
+  "Return the binary exponent of X as a float, so that 1 <= |X|/2^E < 2.
+Returns -inf.0 for zero, +inf.0 for infinities, and NaN for NaN."
+  (cond
+   ((nan? x) x)
+   ((inf? x) +inf.0)
+   ((zero? x) -inf.0)
+   (else (exact->inexact (%float-exponent x)))))
+
+(define (ldexp x e)
+  "Return X * 2^E, rounded once."
+  (let ((x (exact->inexact x)))
+    (if (%finite-nonzero? x)
+	(let ((y (exact->inexact (* (inexact->exact x) (expt 2 e)))))
+	  ;; Keep the sign of an underflow to zero.
+	  (if (and (zero? y) (< x 0)) -0.0 y))
+	x)))
+
+(define (scalbn x n)
+  "Return X * 2^N, rounded once.  The same as LDEXP, since floats are
+binary."
+  (ldexp x n))
 
 ;; With a real implementaion of log1p, it should be more accurate that
 ;; (log (1+ x))
 (define (log1p x)
-  "Compute the natural logarithm of val + 1."
-  (log (1+ x)))
+  "Compute the natural logarithm of X + 1.  This is accurate even when
+X is close to zero."
+  ;; The rounding errors in U and (log U) cancel.
+  (let* ((x (exact->inexact x))
+	 (u (+ 1.0 x)))
+    (cond
+     ((= u 1.0) x)
+     ((inf? u) (log x))
+     (else (* (log u) (/ x (- u 1.0)))))))
 
 (define (log2 x)
-  'fixme)
-
-(define (logb x)
-  'fixme)
+  "Compute the base-2 logarithm of X.  It is exact for powers of two."
+  (let ((x (exact->inexact x)))
+    (cond
+     ((nan? x) x)
+     ((zero? x) -inf.0)
+     ((< x 0) +nan.0)
+     ((inf? x) x)
+     ((< 0.5 x 2.0)
+      ;; Near 1, x - 1 is exact, and log1p keeps the precision.
+      (/ (log1p (- x 1.0)) (log 2.0)))
+     (else
+      (let* ((q (inexact->exact x))
+	     (e (binary-exponent q))
+	     (m (exact->inexact (/ q (expt 2 e)))))	; 1 <= m < 2
+	(+ e (/ (log m) (log 2.0))))))))
 
 (define (modf x)
-  'fixme)
-
-(define (scalbn x n)
-  'fixme)
+  "Break X into its fractional and integral parts, both with the sign
+of X.  Return them as a pair (FRACTION . INTEGER)."
+  (let ((x (exact->inexact x)))
+    (cond
+     ((nan? x) (cons x x))
+     ((inf? x) (cons (if (< x 0) -0.0 0.0) x))
+     (else
+      (let* ((i (truncate x))
+	     (f (- x i)))
+	(cons (if (signbit x) (- (abs f)) f)
+	      i))))))
 
 (define (cbrt x)
-  'fixme)
+  "Compute the real cube root of X."
+  (let ((x (exact->inexact x)))
+    (if (not (%finite-nonzero? x))
+	x
+	;; Scale |x| by 2^(3k) into [1, 8), so that the Newton step can't
+	;; overflow or underflow, then scale the root back by 2^k.
+	(let* ((k (floor-quotient (%float-exponent x) 3))
+	       (a (ldexp (abs x) (* -3 k)))
+	       (y (expt a (/ 1.0 3.0)))
+	       ;; One Newton step to fix the last bits.
+	       (y (- y (/ (- (* y y y) a) (* 3.0 y y))))
+	       (y (ldexp y k)))
+	  (if (< x 0) (- y) y)))))
 
 (define (hypot x y)
-  'fixme)
+  "Compute the square root of X^2 + Y^2 without undue overflow or
+underflow."
+  (let ((x (abs (exact->inexact x)))
+	(y (abs (exact->inexact y))))
+    (cond
+     ((or (inf? x) (inf? y)) +inf.0)
+     ((or (nan? x) (nan? y)) +nan.0)
+     (else
+      (let ((a (max x y)))
+	(if (zero? a)
+	    0.0
+	    ;; Scale by a power of 2 (which is exact) so that the
+	    ;; exactly-computed sum of squares is near 1.
+	    (let* ((k (%float-exponent a))
+		   (qx (/ (inexact->exact x) (expt 2 k)))
+		   (qy (/ (inexact->exact y) (expt 2 k))))
+	      (ldexp (sqrt (exact->inexact (+ (* qx qx) (* qy qy)))) k))))))))
 
 (define (pow x y)
   (expt x y))
 
 (define (erf x)
-  'fixme)
+  "Compute the error function of X."
+  (let ((x (exact->inexact x)))
+    (cond
+     ((nan? x) x)
+     ((zero? x) x)
+     ((> (abs x) 6.0) (if (< x 0) -1.0 1.0))
+     (else
+      ;; erf(x) = 2/sqrt(pi) exp(-x^2) sum_{n>=0} 2^n x^(2n+1) / (1*3*...*(2n+1))
+      ;; All terms are positive, so there is no cancellation.
+      (let ((x2 (* x x)))
+	(let loop ((n 0) (term x) (sum x))
+	  (let* ((term (/ (* term 2.0 x2) (+ (* 2 n) 3)))
+		 (sum2 (+ sum term)))
+	    (if (= sum2 sum)
+		(* (/ 2.0 (sqrt (* 4 (atan 1.0)))) (exp (- x2)) sum)
+		(loop (1+ n) term sum2)))))))))
 
-(define (lgamma x)
-  'fixme)
+;; Lanczos approximation, g = 7, n = 9.
+(define %lanczos-g 7)
+(define %lanczos-coefficients
+  '(0.99999999999980993
+    676.5203681218851
+    -1259.1392167224028
+    771.32342877765313
+    -176.61502916214059
+    12.507343278686905
+    -0.13857109526572012
+    9.9843695780195716e-6
+    1.5056327351493116e-7))
+
+(define (%lanczos-sum z)
+  "For Z = X - 1, the Lanczos series A(Z)."
+  (let loop ((k 1)
+	     (cs (cdr %lanczos-coefficients))
+	     (acc (car %lanczos-coefficients)))
+    (if (null? cs)
+	acc
+	(loop (1+ k) (cdr cs) (+ acc (/ (car cs) (+ z k)))))))
+
+(define %pi (* 4 (atan 1.0)))
+
+(define (%sinpi x)
+  "Compute sin(pi X) accurately, even for large X near an integer."
+  ;; X - 2 round(X/2) is exact, and lies in [-1, 1].
+  (let ((r (- x (* 2.0 (round (/ x 2.0))))))
+    (sin (* %pi r))))
+
+(define (%zeta k)
+  "The Riemann zeta function for integers K >= 2, by Euler-Maclaurin
+summation."
+  (let* ((n 50)
+	 (head (let loop ((j 1) (acc 0.0))
+		 (if (= j n) acc (loop (1+ j) (+ acc (expt (exact->inexact j) (- k)))))))
+	 (nn (exact->inexact n)))
+    (+ head
+       (/ (expt nn (- 1 k)) (- k 1))
+       (/ (expt nn (- k)) 2)
+       (* (/ k 12) (expt nn (- (1+ k))))
+       (- (* (/ (* k (+ k 1) (+ k 2)) 720) (expt nn (- (+ k 3)))))
+       (* (/ (* k (+ k 1) (+ k 2) (+ k 3) (+ k 4)) 30240) (expt nn (- (+ k 5)))))))
+
+(define %euler-gamma 0.57721566490153286)
+
+(define %zetas
+  ;; zeta(2) ... zeta(40)
+  (let loop ((k 40) (acc '()))
+    (if (< k 2) acc (loop (1- k) (cons (%zeta k) acc)))))
+
+(define (%lgamma1p z)
+  "lgamma(1 + Z) for small |Z|, by its Taylor series, which keeps the
+relative precision near the zeros of lgamma at 1 and 2."
+  (let loop ((k 2) (zs %zetas) (zk (* z z)) (acc (- (* %euler-gamma z))))
+    (if (null? zs)
+	acc
+	(let ((term (/ (* (if (even? k) 1 -1) (car zs) zk) k)))
+	  (if (< (abs term) (* 1e-18 (abs acc)))
+	      acc
+	      (loop (1+ k) (cdr zs) (* zk z) (+ acc term)))))))
+
+(define (%stirling-series x)
+  "The correction term of Stirling's series for lgamma, for X >= 10:
+1/(12x) - 1/(360x^3) + 1/(1260x^5) - ..."
+  (let ((x2 (* x x)))
+    (/ (+ 1/12
+	  (/ (+ -1/360
+		(/ (+ 1/1260
+		      (/ (+ -1/1680
+			    (/ (+ 1/1188
+				  (/ (+ -691/360360
+					(/ 1/156 x2))
+				     x2))
+			       x2))
+			 x2))
+		   x2))
+	     x2))
+       x)))
 
 (define (tgamma x)
-  'fixme)
+  "Compute the gamma function of X.  For non-positive integers, which
+are poles, it returns +inf.0 for zero and NaN otherwise."
+  (let ((x (exact->inexact x)))
+    (cond
+     ((nan? x) x)
+     ((= x +inf.0) x)
+     ((= x -inf.0) +nan.0)
+     ((zero? x) (if (signbit x) -inf.0 +inf.0))
+     ((and (< x 0) (integer? x)) +nan.0)
+     ((and (integer? x) (<= x 171))
+      ;; Exact for positive integers.
+      (exact->inexact
+       (let loop ((k (inexact->exact x)) (acc 1))
+	 (if (<= k 2) acc (loop (1- k) (* acc (1- k)))))))
+     ((> x 171.7) +inf.0)
+     ((< x 0.5)
+      ;; Reflection: gamma(x) gamma(1 - x) = pi / sin(pi x)
+      (/ %pi (* (%sinpi x) (tgamma (- 1.0 x)))))
+     ((>= x 10.0)
+      ;; Stirling: sqrt(2 pi) x^(x - 1/2) e^-x e^S(x).  The power is
+      ;; split in two to avoid overflow.
+      (let ((p (expt x (/ (- x 0.5) 2))))
+	(* (sqrt (* 2 %pi)) p (/ p (exp x)) (exp (%stirling-series x)))))
+     (else
+      (let* ((z (- x 1.0))
+	     (t (+ z %lanczos-g 0.5)))
+	;; Split the power to avoid overflow for large X.
+	(let ((p (expt t (/ (+ z 0.5) 2))))
+	  (* (sqrt (* 2 %pi)) p (/ p (exp t)) (%lanczos-sum z))))))))
+
+(define (lgamma x)
+  "Compute the natural logarithm of the absolute value of the gamma
+function of X.  It returns +inf.0 at the poles."
+  (let ((x (exact->inexact x)))
+    (cond
+     ((nan? x) x)
+     ((inf? x) +inf.0)
+     ((and (<= x 0) (integer? x)) +inf.0)
+     ((or (= x 1.0) (= x 2.0)) 0.0)
+     ((< (abs x) 1e-8)
+      ;; lgamma(x) = -log|x| - gamma x + O(x^2)
+      (- (- (log (abs x))) (* %euler-gamma x)))
+     ((< (abs (- x 1.0)) 0.25)
+      (%lgamma1p (- x 1.0)))
+     ((< (abs (- x 2.0)) 0.25)
+      ;; lgamma(2 + z) = lgamma(1 + z) + log(1 + z)
+      (let ((z (- x 2.0)))
+	(+ (%lgamma1p z) (log1p z))))
+     ((< x 0.5)
+      ;; Reflection
+      (- (log %pi)
+	 (log (abs (%sinpi x)))
+	 (lgamma (- 1.0 x))))
+     ((>= x 10.0)
+      ;; Stirling
+      (+ (* (- x 0.5) (log x))
+	 (- x)
+	 (* 0.5 (log (* 2 %pi)))
+	 (exact->inexact (%stirling-series x))))
+     (else
+      (let* ((z (- x 1.0))
+	     (t (+ z %lanczos-g 0.5)))
+	(+ (* 0.5 (log (* 2 %pi)))
+	   (* (+ z 0.5) (log t))
+	   (- t)
+	   (log (%lanczos-sum z))))))))
 
 (define (ceil x)
   (ceiling x))
 
 (define (lround x)
-  "Rounds to the nearest integer value, but, for halfway cases,
-always rounds away from zero."
-  'fixme)
+  "Round X to the nearest integer, rounding halfway cases away from zero.
+Returns an exact integer."
+  (when (or (inf? x) (nan? x))
+    (scm-error 'out-of-range "lround" "cannot round ~a to an integer"
+	       (list x) (list x)))
+  (let* ((q (abs (inexact->exact x)))
+	 (r (floor (+ q 1/2))))
+    (if (< x 0) (- r) r)))
 
 (define (trunc x)
   "Round positive numbers down toward zero.  Round negative numbers
@@ -2906,22 +3330,78 @@ up toward zero."
   (truncate x))
 
 (define (fmod x y)
-  ;; some other remainder function
-  'fixme)
+  "Compute the floating-point remainder of X / Y, which has the sign
+of X and is computed exactly: X - trunc(X / Y) * Y."
+  (let ((x (exact->inexact x))
+	(y (exact->inexact y)))
+    (cond
+     ((or (nan? x) (nan? y) (inf? x) (zero? y)) +nan.0)
+     ((inf? y) x)
+     (else
+      (let* ((qx (inexact->exact x))
+	     (qy (inexact->exact y))
+	     (r (exact->inexact (- qx (* (truncate (/ qx qy)) qy)))))
+	(if (zero? r) (if (signbit x) -0.0 0.0) r))))))
 
 (define (remquo x y)
-  'fixme)
-
+  "Compute the IEEE remainder of X / Y, X - n * Y where n is X / Y
+rounded to the nearest integer, ties to even.  Return a pair of the
+remainder and the low three bits of n, with the sign of X / Y."
+  (let ((x (exact->inexact x))
+	(y (exact->inexact y)))
+    (cond
+     ((or (nan? x) (nan? y) (inf? x) (zero? y)) (cons +nan.0 0))
+     ((inf? y) (cons x 0))
+     (else
+      (let* ((qx (inexact->exact x))
+	     (qy (inexact->exact y))
+	     (n (round (/ qx qy)))	; exact round is ties-to-even
+	     (r (exact->inexact (- qx (* n qy))))
+	     (bits (modulo (abs n) 8)))
+	(cons (if (zero? r) (if (signbit x) -0.0 0.0) r)
+	      (if (eq? (signbit x) (signbit y)) bits (- bits))))))))
 
 (define (fdim x y)
   "if x > y, returns x - y.  Otherwise, returns zero."
-  'fixme)
+  (let ((x (exact->inexact x))
+	(y (exact->inexact y)))
+    (cond
+     ((nan? x) x)
+     ((nan? y) y)
+     ((> x y) (- x y))
+     (else 0.0))))
 
-;; A proper implementation may avoid rounding error.
 (define (fma x y z)
+  "Compute X * Y + Z, rounded once."
+  (let ((x (exact->inexact x))
+	(y (exact->inexact y))
+	(z (exact->inexact z)))
+    (if (and (finite? x) (finite? y) (finite? z))
+	(let ((r (exact->inexact (+ (* (inexact->exact x) (inexact->exact y))
+				    (inexact->exact z)))))
+	  ;; An exact zero result is -0.0 only if both parts are -0.0.
+	  (if (zero? r)
+	      (+ (* x y) z)
+	      r))
+	(+ (* x y) z))))
 
-  (+ (* x y) z))
-
+(define (nextafter x y)
+  "Return the next representable float after X in the direction of Y."
+  (let ((x (exact->inexact x))
+	(y (exact->inexact y)))
+    (cond
+     ((or (nan? x) (nan? y)) +nan.0)
+     ((= x y) y)
+     ((zero? x) (if (> y 0) 5e-324 -5e-324))
+     (else
+      (let ((bv (make-bytevector 8)))
+	(bytevector-ieee-double-set! bv 0 x (endianness big))
+	(let ((bits (bytevector-u64-ref bv 0 (endianness big))))
+	  ;; Moving away from zero increments the magnitude bits.
+	  (bytevector-u64-set! bv 0
+			       (if (eq? (> y x) (> x 0)) (1+ bits) (1- bits))
+			       (endianness big))
+	  (bytevector-ieee-double-ref bv 0 (endianness big))))))))
 
 ;; ABS - is in core Guile
 

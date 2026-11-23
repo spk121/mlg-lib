@@ -90,6 +90,7 @@ TESTS = \
   tests/t-mlg-lists.scm \
   tests/t-mlg-math.scm \
   tests/t-mlg-ports.scm \
+  tests/t-ryu-core.scm \
   tests/t-ryu-printf.scm
 
 TEST_EXTENSIONS = .scm
